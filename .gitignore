@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller / Build output
+build/
+dist/
+*.spec.bak
+
+# Backups and temporary test runs
+backups/
+backup/
+backup*/
+test_run_output/
+dev_scratch/
+*.log
+export_error.log
+compare_*.py
+
+# Excel data files (Nguồn dữ liệu, báo cáo khách hàng, mẫu dữ liệu)
+*.xlsx
+*.xls
+*.csv
+
+# IDE / Editor
+.idea/
+.vscode/
+.gemini/

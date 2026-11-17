@@ -1,0 +1,571 @@
+{
+  "TCR_TML": [
+    {
+      "name": "20X40",
+      "factor": 1.0,
+      "source": "BOTH",
+      "patterns": [
+        "20X40*",
+        "TTP24XX"
+      ]
+    },
+    {
+      "name": "25X40 (15 V/T)",
+      "factor": 1.5,
+      "source": "BOTH",
+      "patterns": [
+        "25X40*",
+        "TTP220XX",
+        "TTPV220XX",
+        "TTP250XX",
+        "TTP251XX"
+      ]
+    },
+    {
+      "name": "25X50",
+      "factor": 1.0,
+      "source": "BOTH",
+      "patterns": [
+        "25X50*",
+        "TTP25XX"
+      ]
+    },
+    {
+      "name": "30X45  (12 V/T)",
+      "factor": 1.62,
+      "source": "BOTH",
+      "patterns": [
+        "30X45*",
+        "TTP34XX",
+        "DTTP34XX"
+      ]
+    },
+    {
+      "name": "30X60 ROTIC",
+      "factor": 1.8,
+      "source": "DONG_NAI",
+      "patterns": [
+        "R0XX",
+        "RV0XX",
+        "DR0XX",
+        "*ROTIC*"
+      ]
+    },
+    {
+      "name": "30X60 TTP",
+      "factor": 1.44,
+      "source": "GRANITE",
+      "patterns": [
+        "TTP36XX",
+        "DTTP36XX",
+        "TTP38XX",
+        "DTTP38XX"
+      ]
+    },
+    {
+      "name": "30X60 TH",
+      "factor": 1.44,
+      "source": "GRANITE",
+      "patterns": [
+        "TH36XX",
+        "TV36XX",
+        "AV36XX",
+        "PV36XX",
+        "FV36XX",
+        "DT36XX",
+        "DA36XX",
+        "P36XX",
+        "F36XX",
+        "DP36XX",
+        "DF36XX"
+      ]
+    },
+    {
+      "name": "40X80",
+      "factor": 1.92,
+      "source": "BOTH",
+      "patterns": [
+        "40X80*",
+        "48XX",
+        "P48XX",
+        "F48XX",
+        "TTP48XX"
+      ]
+    },
+    {
+      "name": "30X30 (11 V/T)",
+      "factor": 0.99,
+      "source": "BOTH",
+      "patterns": [
+        "30X30*",
+        "F34XX",
+        "F30XX",
+        "P30XX",
+        "P34XX"
+      ]
+    },
+    {
+      "name": "30X30 (16 V/T)",
+      "factor": 1.44,
+      "source": "BOTH",
+      "patterns": [
+        "*16V*",
+        "*16 VIÊN*",
+        "P30*X*",
+        "F30*X*",
+        "P34*X*",
+        "F34*X*",
+        "*30*X*",
+        "*36*X*",
+        "*38*X*",
+        "TTP360XX",
+        "TTP362XX",
+        "TTP380XX",
+        "TTP382XX",
+        "TTP360XL1",
+        "TTP362XL1",
+        "TTP380XL1",
+        "TTP382XL1"
+      ]
+    },
+    {
+      "name": "40X40",
+      "factor": 0.96,
+      "source": "BOTH",
+      "patterns": [
+        "40X40*",
+        "TTP4XX"
+      ]
+    },
+    {
+      "name": "40X40 (12V/T)",
+      "factor": 1.92,
+      "source": "BOTH",
+      "patterns": [
+        "TTP423XX",
+        "TTP425XX",
+        "TTP4268XX",
+        "TTP473XX",
+        "TTP447XX"
+      ]
+    },
+    {
+      "name": "40X60",
+      "factor": 1.92,
+      "source": "BOTH",
+      "patterns": [
+        "40X60*"
+      ]
+    },
+    {
+      "name": "50X50 (6 V/T)",
+      "factor": 1.5,
+      "source": "BOTH",
+      "patterns": [
+        "50X50*",
+        "PZ57XX",
+        "TTP5XX",
+        "F5XX",
+        "M5XX"
+      ]
+    },
+    {
+      "name": "60x60 (5 V/T)",
+      "factor": 1.8,
+      "source": "DONG_NAI",
+      "patterns": [
+        "60X60*",
+        "P6XX",
+        "F6XX",
+        "TTP6XX",
+        "TTP660NL1",
+        "TTP663NL1"
+      ]
+    },
+    {
+      "name": "60x60 ĐÁ (5 V/T)",
+      "factor": 1.8,
+      "source": "GRANITE",
+      "patterns": [
+        "P66XX",
+        "F66XX",
+        "TTP66XX"
+      ]
+    },
+    {
+      "name": "80x80 ĐÁ",
+      "factor": 1.92,
+      "source": "BOTH",
+      "patterns": [
+        "80X80*",
+        "P8XX",
+        "T8XX",
+        "A8XX",
+        "F8XX",
+        "V8XX",
+        "M8XX",
+        "TTP8XX"
+      ]
+    }
+  ],
+  "TMR": [
+    {
+      "name": "20x40",
+      "factor": 1.0,
+      "source": "BOTH",
+      "patterns": [
+        "20X40*",
+        "TTP24XX"
+      ]
+    },
+    {
+      "name": "25x40",
+      "factor": 1.5,
+      "source": "BOTH",
+      "patterns": [
+        "25X40*",
+        "TTP220XX",
+        "TTPV220XX",
+        "TTP250XX",
+        "TTP251XX"
+      ]
+    },
+    {
+      "name": "25x50",
+      "factor": 1.0,
+      "source": "BOTH",
+      "patterns": [
+        "25X50*",
+        "TTP25XX"
+      ]
+    },
+    {
+      "name": "30x45",
+      "factor": 1.62,
+      "source": "BOTH",
+      "patterns": [
+        "30X45*",
+        "TTP34XX",
+        "DTTP34XX"
+      ]
+    },
+    {
+      "name": "30x60 ROTIC",
+      "factor": 1.8,
+      "source": "DONG_NAI",
+      "patterns": [
+        "R0XX",
+        "RV0XX",
+        "DR0XX",
+        "*ROTIC*"
+      ]
+    },
+    {
+      "name": "30x60 TTP(8v)",
+      "factor": 1.44,
+      "source": "GRANITE",
+      "patterns": [
+        "*HL*",
+        "*_H*",
+        "*-H*",
+        "*8V*"
+      ]
+    },
+    {
+      "name": "30x60 TTP(10v)",
+      "factor": 1.8,
+      "source": "GRANITE",
+      "patterns": [
+        "TTP36XX",
+        "DTTP36XX",
+        "TTP38XX",
+        "DTTP38XX"
+      ]
+    },
+    {
+      "name": "30x60 TH(8v)",
+      "factor": 1.44,
+      "source": "GRANITE",
+      "patterns": [
+        "*8V*"
+      ]
+    },
+    {
+      "name": "30x60 TH(10v)",
+      "factor": 1.8,
+      "source": "GRANITE",
+      "patterns": [
+        "TH36XX",
+        "TV36XX",
+        "MV36XX",
+        "DV36XX",
+        "M36XX",
+        "DM36XX"
+      ]
+    },
+    {
+      "name": "40x80",
+      "factor": 1.92,
+      "source": "BOTH",
+      "patterns": [
+        "40X80*",
+        "48XX",
+        "M48XX",
+        "TTP48XX"
+      ]
+    },
+    {
+      "name": "30x30",
+      "factor": 1.44,
+      "source": "BOTH",
+      "patterns": [
+        "30X30*",
+        "*35*X*",
+        "*38*X*"
+      ]
+    },
+    {
+      "name": "40x40",
+      "factor": 1.44,
+      "source": "BOTH",
+      "patterns": [
+        "40X40*",
+        "TTP4XX"
+      ]
+    },
+    {
+      "name": "40x60",
+      "factor": 1.92,
+      "source": "BOTH",
+      "patterns": [
+        "40X60*"
+      ]
+    },
+    {
+      "name": "50x50",
+      "factor": 1.5,
+      "source": "BOTH",
+      "patterns": [
+        "50X50*",
+        "M55XX",
+        "TTP5XX"
+      ]
+    },
+    {
+      "name": "60x60",
+      "factor": 1.8,
+      "source": "DONG_NAI",
+      "patterns": [
+        "60X60*",
+        "M6XX",
+        "TTP6XX"
+      ]
+    },
+    {
+      "name": "60x60 (P)",
+      "factor": 1.8,
+      "source": "GRANITE",
+      "patterns": [
+        "M66XX",
+        "TTP66XX"
+      ]
+    },
+    {
+      "name": "80x80 (P)",
+      "factor": 1.92,
+      "source": "BOTH",
+      "patterns": [
+        "80X80*",
+        "M8XX",
+        "T8XX",
+        "P8XX",
+        "A8XX",
+        "F8XX",
+        "V8XX",
+        "TTP8XX"
+      ]
+    }
+  ],
+  "TRM_TPS": [
+    {
+      "name": "20x40",
+      "factor": 0.96,
+      "source": "BOTH",
+      "patterns": [
+        "20X40*",
+        "TTP24XX"
+      ]
+    },
+    {
+      "name": "25x40 (15v/t)",
+      "factor": 1.5,
+      "source": "BOTH",
+      "patterns": [
+        "25X40*",
+        "TTP220XX",
+        "TTPV220XX"
+      ]
+    },
+    {
+      "name": "25x50",
+      "factor": 1.0,
+      "source": "BOTH",
+      "patterns": [
+        "25X50*",
+        "TTP25XX"
+      ]
+    },
+    {
+      "name": "30x60 ROTIC",
+      "factor": 1.8,
+      "source": "DONG_NAI",
+      "patterns": [
+        "R0XX",
+        "RV0XX",
+        "DR0XX",
+        "*ROTIC*"
+      ]
+    },
+    {
+      "name": "30x60 TTP(10v)",
+      "factor": 1.8,
+      "source": "GRANITE",
+      "patterns": [
+        "TTP36XX",
+        "DTTP36XX",
+        "TTP38XX",
+        "DTTP38XX",
+        "TTPV38XX",
+        "TTPV36XX"
+      ]
+    },
+    {
+      "name": "30x60(10v) TRM/TPS",
+      "factor": 1.8,
+      "source": "GRANITE",
+      "patterns": [
+        "T36XX",
+        "A36XX",
+        "TV36XX",
+        "AV36XX",
+        "DT36XX",
+        "DA36XX",
+        "TH36XX"
+      ]
+    },
+    {
+      "name": "40x80",
+      "factor": 1.92,
+      "source": "BOTH",
+      "patterns": [
+        "40X80*",
+        "48XX",
+        "T48XX",
+        "A48XX",
+        "TTP48XX"
+      ]
+    },
+    {
+      "name": "30x30 (16v/t)",
+      "factor": 1.44,
+      "source": "BOTH",
+      "patterns": [
+        "30X30*",
+        "T30XX",
+        "A30XX",
+        "T38XX",
+        "A38XX",
+        "*30*X*",
+        "*36*X*",
+        "*38*X*",
+        "TTP360XX",
+        "TTP362XX",
+        "TTP380XX",
+        "TTP382XX",
+        "TTP360XL1",
+        "TTP362XL1",
+        "TTP380XL1",
+        "TTP382XL1"
+      ]
+    },
+    {
+      "name": "40x40",
+      "factor": 0.96,
+      "source": "BOTH",
+      "patterns": [
+        "40X40*",
+        "TTP4XX"
+      ]
+    },
+    {
+      "name": "40x40 (12v/t)",
+      "factor": 1.92,
+      "source": "BOTH",
+      "patterns": [
+        "TTP423XX",
+        "TTP425XX",
+        "TTP4268XX",
+        "TTP473XX",
+        "TTP447XX"
+      ]
+    },
+    {
+      "name": "40x60",
+      "factor": 1.8,
+      "source": "BOTH",
+      "patterns": [
+        "40X60*"
+      ]
+    },
+    {
+      "name": "50x50 (06v/t)",
+      "factor": 1.5,
+      "source": "BOTH",
+      "patterns": [
+        "50X50*",
+        "A50XX",
+        "TTP5XX",
+        "TZ51XX"
+      ]
+    },
+    {
+      "name": "60x60 (05v/t)",
+      "factor": 1.8,
+      "source": "DONG_NAI",
+      "patterns": [
+        "60X60*",
+        "T6XX",
+        "A6XX",
+        "TTP6XX",
+        "T6166NL1",
+        "TTP660NL1",
+        "TTP663NL1"
+      ]
+    },
+    {
+      "name": "60x60.P (05v/t)",
+      "factor": 1.8,
+      "source": "GRANITE",
+      "patterns": [
+        "T66XX",
+        "A66XX",
+        "TTP66XX"
+      ]
+    },
+    {
+      "name": "80x80.P (03v/t)",
+      "factor": 1.92,
+      "source": "BOTH",
+      "patterns": [
+        "80X80*",
+        "T8XX",
+        "A8XX",
+        "P8XX",
+        "F8XX",
+        "V8XX",
+        "M8XX",
+        "TTP8XX"
+      ]
+    }
+  ]
+}

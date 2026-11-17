@@ -1,0 +1,32 @@
+{
+  "TCR_TML": [
+    {
+      "ma_khach": "KH0001",
+      "stt": 1,
+      "ten_khach": "ĐẠI LÝ MẪU 01",
+      "nhom": "VIP",
+      "thuong_hieu": "TCR",
+      "is_active": true
+    }
+  ],
+  "TRM_TPS": [
+    {
+      "ma_khach": "KH0002",
+      "stt": 1,
+      "ten_khach": "ĐẠI LÝ MẪU 02",
+      "nhom": "VIP",
+      "thuong_hieu": "TRM",
+      "is_active": true
+    }
+  ],
+  "TMR": [
+    {
+      "ma_khach": "KH0003",
+      "stt": 1,
+      "ten_khach": "ĐẠI LÝ MẪU 03",
+      "nhom": "VIP",
+      "thuong_hieu": "TMR",
+      "is_active": true
+    }
+  ]
+}
