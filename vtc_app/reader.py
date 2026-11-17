@@ -177,8 +177,10 @@ class ExcelReader:
         template_path: str,
         report_type: str,
         sheet_name: Optional[str] = None,
+        *,
         target_date: Optional[date] = None,
-        rule_manager: Optional[Any] = None
+        rule_manager: Optional[Any] = None,
+        dealers: Optional[List[Dict[str, Any]]] = None
     ) -> List[TrackedCustomer]:
         """
         Đọc danh sách đại lý được theo dõi ở Mục 02 của mẫu đích.
@@ -215,8 +217,11 @@ class ExcelReader:
 
         customers: List[TrackedCustomer] = []
 
-        # Nạp dữ liệu tra cứu từ rule_manager nếu có
-        app_dealers = rule_manager.get_dealers(report_type) if rule_manager else []
+        if dealers is None and rule_manager is not None:
+            dealers = rule_manager.get_dealers(report_type)
+
+        # Nạp dữ liệu tra cứu từ rule_manager/dealers nếu có
+        app_dealers = dealers or []
         app_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "").strip().upper()): d for d in app_dealers}
         app_by_code_th = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "").strip().upper()): d for d in app_dealers if d.get("ma_khach")}
         app_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
@@ -287,6 +292,37 @@ class ExcelReader:
                         col_idx_ma_khach=1
                     ))
             wb.close()
+
+            if app_dealers:
+                by_code = {}
+                by_name = {}
+                for customer in customers:
+                    brand = customer.thuong_hieu
+                    if customer.ma_khach:
+                        by_code[(customer.ma_khach, brand)] = customer
+                    by_name.setdefault((normalize_dealer_name(customer.ten_khach), brand), []).append(customer)
+
+                for dealer in app_dealers:
+                    code = str(dealer.get("ma_khach") or "").strip().upper()
+                    name = str(dealer.get("ten_khach") or "").strip()
+                    brand = str(dealer.get("thuong_hieu") or "").strip().upper()
+                    if not code or code == "CH9999" or name.startswith("ĐẠI LÝ MẪU "):
+                        continue
+                    same_name = by_name.get((normalize_dealer_name(name), brand), [])
+                    customer = by_code.get((code, brand))
+                    if not customer and same_name:
+                        if len(same_name) != 1 or same_name[0].ma_khach:
+                            continue
+                        customer = same_name[0]
+                        customer.ma_khach = code
+                    if not customer:
+                        customer = TrackedCustomer(code, dealer.get("stt", len(customers) + 1),
+                                                   name, dealer.get("nhom", ""), brand)
+                        customers.append(customer)
+                    customer.is_active = dealer.get("is_active", True)
+                    customer.nhom = dealer.get("nhom") or customer.nhom
+                    by_code[(code, brand)] = customer
+
             return customers
 
         # Fallback cho mẫu cũ riêng rẽ (tương thích ngược)

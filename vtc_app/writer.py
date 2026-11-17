@@ -84,6 +84,139 @@ class ExcelWriter:
                 dc.alignment = copy(sc.alignment)
 
     @staticmethod
+    def insert_dealer_row(ws, row: int):
+        """Chèn 1 dòng an toàn và cập nhật vùng merged_cells."""
+        moved = [copy(area) for area in ws.merged_cells.ranges if area.min_row >= row]
+        for area in moved:
+            ws.unmerge_cells(str(area))
+        ws.insert_rows(row)
+        for area in moved:
+            area.shift(row_shift=1)
+            ws.merge_cells(str(area))
+
+    @staticmethod
+    def find_day_column(ws, row: int, start: int, day: date) -> Optional[int]:
+        """Tìm cột của ngày cụ thể trong dòng header."""
+        short = day.strftime("%d/%m")
+        for col in range(start, ws.max_column + 1):
+            value = ws.cell(row, col).value
+            if isinstance(value, datetime):
+                if value.date() == day:
+                    return col
+            elif isinstance(value, date):
+                if value == day:
+                    return col
+            elif value and re.match(rf"^{short}(?:/({day.year}))?(?:\s|$)", str(value).strip()):
+                return col
+        return None
+
+    @staticmethod
+    def validate_template(path: str, report_type: str, target_date: Optional[date] = None, dealers: Any = ()) -> str:
+        """
+        Kiểm tra tính hợp lệ của tệp mẫu Excel tổng:
+        - Chặn chọn nhầm tệp đơn hàng nguồn (Đồng Nai / GRANITE / Bảng kê).
+        - Kiểm tra cấu trúc cột CỬA HÀNG ở Mục 01 và Mục 02.
+        - Hỗ trợ cả tệp Excel tổng hợp nhất 3 khối và mẫu riêng rẽ từng nhóm.
+        - Trả về tên sheet đích hợp lệ.
+        """
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Không tìm thấy tệp: {path}")
+
+        # Kiểm tra nhanh tên tệp nếu chọn nhầm tệp nguồn đơn hàng
+        base_name = os.path.basename(path).upper()
+        if any(k in base_name for k in ["BẢNG KÊ", "BANG KE", "BẢNG KÊ ĐƠN HÀNG"]):
+            raise ValueError(f"Tệp '{os.path.basename(path)}' là tệp bảng kê đơn hàng nguồn, không phải tệp mẫu Excel tổng. Vui lòng chọn lại tệp mẫu.")
+
+        with open(path, "rb") as source:
+            wb = openpyxl.load_workbook(source, read_only=False)
+
+        try:
+            ws = ExcelWriter.get_target_sheet(wb, report_type, target_date)
+
+            # Kiểm tra xem có phải bảng kê đơn hàng bằng nội dung sheet
+            first_rows_text = " ".join(
+                str(ws.cell(r, c).value or "").strip().upper()
+                for r in range(1, min(ws.max_row + 1, 6))
+                for c in range(1, min(ws.max_column + 1, 10))
+            )
+            if "BẢNG KÊ ĐƠN HÀNG" in first_rows_text or ("NGÀY CT" in first_rows_text and "SỐ CT" in first_rows_text):
+                raise ValueError(f"Tệp '{os.path.basename(path)}' là tệp bảng kê đơn hàng nguồn, không phải tệp mẫu Excel tổng. Vui lòng chọn lại tệp mẫu.")
+
+            # Kiểm tra cấu trúc Mục 01 & Mục 02:
+            # Phát hiện xem có phải tệp hợp nhất 3 khối
+            markers = {}
+            for r in range(1, min(ws.max_row + 1, 120)):
+                vals = [str(ws.cell(r, c).value or "").strip().upper() for c in range(1, 6)]
+                combined = " | ".join(vals)
+                if "TỔNG NHÓM TRM + TPS" in combined or "TỔNG NHÓM TRM+TPS" in combined:
+                    markers["TRM_TPS_END"] = r
+                elif "TỔNG NHÓM TCR + TML" in combined or "TỔNG NHÓM TCR+TML" in combined:
+                    markers["TCR_TML_END"] = r
+                elif "TỔNG NHÓM TMR" in combined:
+                    markers["TMR_END"] = r
+
+            is_unified = bool(markers.get("TRM_TPS_END") and markers.get("TCR_TML_END"))
+
+            if is_unified:
+                # Tệp hợp nhất 3 khối: kiểm tra dòng header 2 (Mục 01) và dòng 27 (Mục 02)
+                has_shop_col = (
+                    str(ws.cell(2, 4).value or "").strip().upper() == "CỬA HÀNG"
+                    and str(ws.cell(27, 4).value or "").strip().upper() == "CỬA HÀNG"
+                )
+                if not has_shop_col:
+                    raise ValueError(f"Tệp Excel '{os.path.basename(path)}' không đúng cấu trúc mẫu báo cáo tiêu thụ (thiếu cột 'CỬA HÀNG' ở Mục 01 hoặc Mục 02).")
+            else:
+                # Tệp riêng rẽ từng nhóm (mẫu cũ)
+                headers = {
+                    "TCR_TML": (2, 4, 27, 8, "TCR + TML", {"TCR", "TML"}),
+                    "TRM_TPS": (3, 3, 24, 7, "TRM + TPS", {"TRM", "TPS"}),
+                    "TMR": (3, 3, 9, 7, "TMR", {"TMR"}),
+                }
+                header, shop_col, month_header, first_day, label, brands = headers[report_type]
+                if report_type == "TMR" and ws.cell(3, 1).value != "Mã khách hàng":
+                    shop_col, first_day = 2, 5
+
+                text = lambda r, c: str(ws.cell(r, c).value or "").strip().upper()
+                title = " ".join(text(r, c) for r in (1, 2) for c in range(1, 26))
+                foreign = {
+                    "TCR_TML": ("TOROMA", "TOPISA", "TOMIRA"),
+                    "TRM_TPS": ("TOCERA", "TOMILAN", "TOMIRA"),
+                    "TMR": ("TOCERA", "TOMILAN", "TOROMA", "TOPISA"),
+                }
+                valid_structure = (
+                    text(header, shop_col) == "CỬA HÀNG"
+                    and text(month_header, shop_col) == "CỬA HÀNG"
+                    and not any(name in title for name in foreign[report_type])
+                )
+                if not valid_structure:
+                    raise ValueError(f"Tệp Excel không khớp nhóm {label}. Vui lòng chọn đúng tệp mẫu của nhóm này.")
+
+            return ws.title
+        finally:
+            wb.close()
+
+    @staticmethod
+    def apply_confirmed_sync(ws, report_type: str, items: List[Dict[str, Any]]):
+        """Áp dụng các thay đổi đại lý đã xác nhận trực tiếp vào worksheet trước khi lưu."""
+        if not items:
+            return
+        # Xác định cột theo mẫu hợp nhất hay mẫu cũ
+        # Mẫu hợp nhất: Col 1 là Mã khách, Col 5 là Nhóm, Col 6 là TH
+        group_col, brand_col = (5, 6) if report_type in ["TCR_TML", "TRM_TPS", "TMR"] else (4, 5)
+        for item in items:
+            row = item.get("row_num")
+            if not row:
+                continue
+            for key, fallback, col in [
+                ("final_code", "app_code", 1),
+                ("final_group", "app_group", group_col),
+                ("th", "th", brand_col),
+            ]:
+                val = item.get(key, item.get(fallback))
+                if val:
+                    ws.cell(row, col).value = val
+
+    @staticmethod
     def get_target_sheet(wb, report_type: str, target_date: Optional[date] = None):
         """
         Xác định sheet đích:
@@ -279,61 +412,7 @@ class ExcelWriter:
 
         wb = openpyxl.load_workbook(template_path, data_only=False)
         ws = ExcelWriter.get_target_sheet(wb, report_type, target_date)
-
-        markers = {}
-        for r in range(1, min(ws.max_row + 1, 120)):
-            vals = [str(ws.cell(r, c).value or "").strip().upper() for c in range(1, 6)]
-            combined = " | ".join(vals)
-            if "TỔNG NHÓM TRM + TPS" in combined or "TỔNG NHÓM TRM+TPS" in combined:
-                markers["TRM_TPS_END"] = r
-            elif "TỔNG NHÓM TCR + TML" in combined or "TỔNG NHÓM TCR+TML" in combined:
-                markers["TCR_TML_END"] = r
-
-        is_unified = bool(markers.get("TRM_TPS_END") and markers.get("TCR_TML_END"))
-
-        if is_unified:
-            ws.cell(27, 1).value = "Mã khách hàng"
-            for it in confirmed_items:
-                r = it.get("row_num")
-                if r:
-                    code_to_write = it.get("final_code", it.get("app_code", ""))
-                    grp_to_write = it.get("final_group", it.get("app_group", ""))
-                    th_to_write = it.get("th", "")
-                    if code_to_write: ws.cell(r, 1).value = code_to_write
-                    if grp_to_write: ws.cell(r, 5).value = grp_to_write
-                    if th_to_write: ws.cell(r, 6).value = th_to_write
-        else:
-            if report_type == "TCR_TML":
-                ws.cell(27, 1).value = "Mã khách hàng"
-                for it in confirmed_items:
-                    r = it.get("row_num")
-                    if r:
-                        code_to_write = it.get("final_code", it.get("app_code", ""))
-                        grp_to_write = it.get("final_group", it.get("app_group", ""))
-                        th_to_write = it.get("th", "TCR")
-                        if code_to_write: ws.cell(r, 1).value = code_to_write
-                        if grp_to_write: ws.cell(r, 5).value = grp_to_write
-                        if th_to_write: ws.cell(r, 6).value = th_to_write
-            elif report_type == "TRM_TPS":
-                ws.cell(24, 1).value = "Mã khách hàng"
-                for it in confirmed_items:
-                    r = it.get("row_num")
-                    if r:
-                        code_to_write = it.get("final_code", it.get("app_code", ""))
-                        grp_to_write = it.get("final_group", it.get("app_group", ""))
-                        th_to_write = it.get("th", "TRM")
-                        if code_to_write: ws.cell(r, 1).value = code_to_write
-                        if grp_to_write: ws.cell(r, 4).value = grp_to_write
-                        if th_to_write: ws.cell(r, 5).value = th_to_write
-            elif report_type == "TMR":
-                for it in confirmed_items:
-                    r = it.get("row_num")
-                    if r:
-                        code_to_write = it.get("final_code", it.get("app_code", ""))
-                        grp_to_write = it.get("final_group", it.get("app_group", ""))
-                        if code_to_write: ws.cell(r, 1).value = code_to_write
-                        if grp_to_write: ws.cell(r, 4).value = grp_to_write
-                        ws.cell(r, 5).value = "TMR"
+        ExcelWriter.apply_confirmed_sync(ws, report_type, confirmed_items)
 
         temp_dir = tempfile.gettempdir()
         temp_file = os.path.join(temp_dir, f"vtc_sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
@@ -352,15 +431,20 @@ class ExcelWriter:
         app_result: Dict[str, Any],
         target_date: date,
         backup_dir: str,
-        rule_manager: Optional[Any] = None
+        rule_manager: Optional[Any] = None,
+        confirmed_items: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """
         Cập nhật kết quả vào tệp Excel tổng, giữ nguyên định dạng, công thức và bố cục.
         - Mục 01: Có mã khách và CHỈ hiện đại lý có phát sinh hợp lệ. Khi cập nhật một nhóm, giữ nguyên số liệu của các nhóm khác trong ngày.
-        - Mục 02: Đồng bộ danh sách theo dõi, chia 3 nhóm (TRM+TPS, TCR+TML, TMR) + Tổng chung.
+        - Mục 02: Đồng bộ danh sách theo dõi, tự động chèn dòng đại lý mới vào Mục 02, tránh sinh dòng trùng khi chạy lại.
+        - Ghi an toàn bằng tệp tạm và kiểm tra đối chiếu trước khi thay thế tệp chính.
         """
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Không tìm thấy tệp Excel tổng: {template_path}")
+
+        dealers = rule_manager.get_dealers(report_type) if rule_manager else []
+        ExcelWriter.validate_template(template_path, report_type, target_date, dealers)
 
         # 1. Tạo bản sao lưu trước khi ghi
         ExcelWriter.create_daily_backup(template_path, backup_dir, target_date)
@@ -523,18 +607,7 @@ class ExcelWriter:
             ws.cell(27, 7).value = "∑SL MÉT"
 
             # Tìm cột ngày tương ứng trong Mục 02 (từ Col 8 trở đi)
-            target_col = None
-            for c in range(8, ws.max_column + 1):
-                cell_val = ws.cell(27, c).value
-                if isinstance(cell_val, datetime) and cell_val.date() == target_date:
-                    target_col = c
-                    break
-                elif isinstance(cell_val, date) and cell_val == target_date:
-                    target_col = c
-                    break
-                elif cell_val and day_header_short in str(cell_val):
-                    target_col = c
-                    break
+            target_col = ExcelWriter.find_day_column(ws, 27, 8, target_date)
 
             if not target_col:
                 target_col = max(ws.max_column + 1, 8)
@@ -561,24 +634,67 @@ class ExcelWriter:
 
             if report_type == "TRM_TPS":
                 b_start = 29
-                b_end = sub_trm_row - 1
                 curr_sub_row = sub_trm_row
                 default_th = "TRM"
             elif report_type == "TCR_TML":
                 b_start = sub_trm_row + 1
-                b_end = sub_tcr_row - 1
                 curr_sub_row = sub_tcr_row
                 default_th = "TCR"
             else:  # TMR
                 b_start = sub_tcr_row + 1
-                b_end = sub_tmr_row - 1
                 curr_sub_row = sub_tmr_row
                 default_th = "TMR"
 
-            app_dealers = rule_manager.get_dealers(report_type) if rule_manager else []
-            app_by_code_th = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "").strip().upper()): d for d in app_dealers if d.get("ma_khach")}
-            app_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "").strip().upper()): d for d in app_dealers}
-            app_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
+            # Áp dụng thay đổi đã xác nhận từ dialog (nếu có)
+            if confirmed_items:
+                ExcelWriter.apply_confirmed_sync(ws, report_type, confirmed_items)
+
+            # Đồng bộ đại lý mới vào Mục 02 (Tự động chèn dòng nếu đại lý có trong AppData nhưng chưa có trong Excel)
+            existing_dealers = {}
+            for r in range(b_start, curr_sub_row):
+                c_val = str(ws.cell(r, 1).value or "").strip().upper()
+                n_val = normalize_dealer_name(str(ws.cell(r, 4).value or ""))
+                if c_val or n_val:
+                    existing_dealers[(c_val, n_val)] = r
+
+            for d in dealers:
+                d_code = str(d.get("ma_khach") or "").strip().upper()
+                d_name = str(d.get("ten_khach") or "").strip()
+                d_th = str(d.get("thuong_hieu") or default_th).strip().upper()
+                if not d_code or d_code == "CH9999" or d_name.startswith("ĐẠI LÝ MẪU"):
+                    continue
+                d_name_norm = normalize_dealer_name(d_name)
+                found = any((d_code and d_code == k[0]) or (d_name_norm and d_name_norm == k[1]) for k in existing_dealers)
+                if not found:
+                    ExcelWriter.insert_dealer_row(ws, curr_sub_row)
+                    new_r = curr_sub_row
+                    ExcelWriter.copy_row_format(ws, new_r - 1, new_r, 26)
+                    ws.cell(new_r, 1).value = d_code
+                    ws.cell(new_r, 2).value = len(existing_dealers) + 1
+                    ws.cell(new_r, 4).value = d_name
+                    ws.cell(new_r, 5).value = d.get("nhom", "VIP")
+                    ws.cell(new_r, 6).value = d_th
+                    ws.cell(new_r, 7).value = f"=SUM(H{new_r}:AA{new_r})"
+                    curr_sub_row += 1
+                    if report_type == "TRM_TPS":
+                        sub_trm_row += 1
+                        sub_tcr_row += 1
+                        sub_tmr_row += 1
+                        grand_total_row += 1
+                    elif report_type == "TCR_TML":
+                        sub_tcr_row += 1
+                        sub_tmr_row += 1
+                        grand_total_row += 1
+                    else:
+                        sub_tmr_row += 1
+                        grand_total_row += 1
+                    existing_dealers[(d_code, d_name_norm)] = new_r
+
+            b_end = curr_sub_row - 1
+
+            app_by_code_th = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "").strip().upper()): d for d in dealers if d.get("ma_khach")}
+            app_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "").strip().upper()): d for d in dealers}
+            app_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in dealers}
 
             muc01_by_code_th = {(row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row for row in muc01_rows if row.get("ma_khach")}
             muc01_by_name_th = {(normalize_dealer_name(row["ten_khach"]), row["thuong_hieu"].strip().upper()): row for row in muc01_rows}
@@ -599,13 +715,13 @@ class ExcelWriter:
                 if not rule_dealer and name_norm:
                     rule_dealer = app_by_name_only.get(name_norm)
 
-                if not raw_code and rule_dealer and rule_dealer.get("ma_khach"):
+                if confirmed_items is None and not raw_code and rule_dealer and rule_dealer.get("ma_khach"):
                     if not ("BẢO VIỆT" in name.upper() and rule_dealer["ma_khach"] == "CH9999"):
                         raw_code = rule_dealer["ma_khach"]
                         ws.cell(r, 1).value = raw_code
 
                 if rule_dealer:
-                    if not ws.cell(r, 5).value and rule_dealer.get("nhom"):
+                    if confirmed_items is None and not ws.cell(r, 5).value and rule_dealer.get("nhom"):
                         ws.cell(r, 5).value = rule_dealer["nhom"]
                     if not ws.cell(r, 6).value and rule_dealer.get("thuong_hieu"):
                         ws.cell(r, 6).value = rule_dealer["thuong_hieu"]
@@ -651,18 +767,46 @@ class ExcelWriter:
                     ws = wb.copy_worksheet(wb.active)
                     ws.title = sheet_day_str
 
-        # Ghi an toàn qua tệp tạm
-        temp_dir = tempfile.gettempdir()
-        temp_file = os.path.join(temp_dir, f"vtc_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
-        wb.save(temp_file)
-        wb.close()
+        # Lưu an toàn vào file tạm trong cùng thư mục và xác thực trước khi replace
+        ws_name = ws.title
+        wb.active = wb.index(ws)
 
-        test_wb = openpyxl.load_workbook(temp_file, read_only=True)
-        test_wb.close()
+        file_dir = os.path.dirname(os.path.abspath(template_path))
+        fd, temporary_path = tempfile.mkstemp(prefix=".vtc-", suffix=".xlsx", dir=file_dir)
+        os.close(fd)
 
         try:
-            shutil.move(temp_file, template_path)
-        except PermissionError:
-            raise PermissionError(f"Tệp '{template_path}' đang được mở bởi ứng dụng khác (ví dụ Excel). Vui lòng đóng tệp rồi thử lại!")
+            wb.save(temporary_path)
+            wb.close()
+
+            # Đóng rồi mở lại file để kiểm tra xác thực dữ liệu đã lưu
+            saved = openpyxl.load_workbook(temporary_path, read_only=True)
+            try:
+                if ws_name not in saved.sheetnames:
+                    raise ValueError(f"Không tìm thấy sheet '{ws_name}' trong tệp đã lưu.")
+                saved_ws = saved[ws_name]
+                if saved.active.title != ws_name:
+                    pass
+
+                # Xác thực Mục 01
+                if is_unified:
+                    first_row, code_col = 3, 1
+                    for i, item in enumerate(combined_rows[:22]):
+                        expected_code = str(item.get("ma_khach") or "")
+                        actual_code = str(saved_ws.cell(first_row + i, code_col).value or "")
+                        if expected_code and actual_code != expected_code:
+                            raise ValueError(f"Kiểm tra Mục 01 không khớp mã khách hàng: {expected_code} vs {actual_code}")
+            finally:
+                saved.close()
+
+            os.replace(temporary_path, template_path)
+        except PermissionError as exc:
+            raise PermissionError(f"Tệp '{template_path}' đang bị khóa hoặc thư mục không cho phép ghi. Hãy đóng tệp trong Excel rồi thử lại.") from exc
+        finally:
+            if os.path.exists(temporary_path):
+                try:
+                    os.unlink(temporary_path)
+                except Exception:
+                    pass
 
         return template_path

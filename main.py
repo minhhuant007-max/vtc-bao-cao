@@ -82,19 +82,9 @@ def run_cli_export():
     rm = RuleManager(config_dir)
     engine = ReportEngine(rm)
 
-    from vtc_app.models import TrackedCustomer
-    raw_dealers = rm.get_dealers(args.report, only_active=True)
-    tracked_custs = [
-        TrackedCustomer(
-            ma_khach=d.get("ma_khach", ""),
-            stt=d.get("stt", 0),
-            ten_khach=d.get("ten_khach", ""),
-            nhom=d.get("nhom", ""),
-            thuong_hieu=d.get("thuong_hieu", ""),
-            is_active=d.get("is_active", True)
-        )
-        for d in raw_dealers
-    ]
+    tracked_custs = ExcelReader.read_tracked_customers(
+        out_path, args.report, target_date=target_d, rule_manager=rm
+    )
 
     orders = []
     if os.path.exists(dn_path):

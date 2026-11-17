@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox, QCheckBox, QTabWidget, QTableWidget,
     QTableWidgetItem, QFileDialog, QMessageBox, QSplitter, QHeaderView,
-    QGroupBox, QLineEdit, QInputDialog
+    QGroupBox, QLineEdit, QInputDialog, QDialog
 )
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont, QColor, QIcon
@@ -388,6 +388,11 @@ class MainWindow(QMainWindow):
     def on_browse_mau(self):
         f, _ = QFileDialog.getOpenFileName(self, "Chọn mẫu Excel tổng", self.base_workspace, "Excel Files (*.xlsx *.xls)")
         if f:
+            try:
+                ExcelWriter.validate_template(f, self.current_report, dealers=self.rules.get_dealers(self.current_report))
+            except Exception as exc:
+                QMessageBox.warning(self, "Chọn lại tệp Excel tổng", str(exc))
+                return
             self.txt_file_mau.setText(f)
             self.settings["master_excel_path"] = f
             if self.chk_remember_mau.isChecked():
@@ -469,6 +474,7 @@ class MainWindow(QMainWindow):
         self.on_open_dealers()
 
     def on_run_preview(self):
+        self.app_results = None
         target_date = self.get_selected_date()
         only_completed = self.chk_only_completed.isChecked()
         apply_adj = self.chk_apply_adj.isChecked() if self.current_report == "TRM_TPS" else False
@@ -487,66 +493,17 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Thiếu mẫu", "Vui lòng chọn tệp mẫu Excel tổng!")
             return
 
-        # Đọc đại lý từ RuleManager và đồng bộ với template
-        dealers = self.rules.get_dealers(self.current_report)
-        dealer_active_map = {}
-        for d in dealers:
-            code = d.get("ma_khach", "").strip().upper()
-            th = d.get("thuong_hieu", "").strip().upper()
-            name = d.get("ten_khach", "").strip().upper()
-            dealer_active_map[(code, th)] = d.get("is_active", True)
-            dealer_active_map[(name, th)] = d.get("is_active", True)
-
-        tracked_custs = ExcelReader.read_tracked_customers(
-            template_path, self.current_report, target_date=target_date, rule_manager=self.rules
-        )
-        dealers_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "").strip().upper()): d for d in dealers}
-        dealers_by_code_th = {(d.get("ma_khach", "").strip().upper(), d.get("thuong_hieu", "").strip().upper()): d for d in dealers if d.get("ma_khach")}
-        dealers_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in dealers}
-
-        for c in tracked_custs:
-            code = c.ma_khach.strip().upper()
-            th = c.thuong_hieu.strip().upper()
-            name_norm = normalize_dealer_name(c.ten_khach)
-
-            d = None
-            if code:
-                d = dealers_by_code_th.get((code, th))
-            if not d and name_norm:
-                d = dealers_by_name_th.get((name_norm, th))
-            if not d and name_norm:
-                d = dealers_by_name_only.get(name_norm)
-
-            if d:
-                if not c.ma_khach and d.get("ma_khach"):
-                    c.ma_khach = d["ma_khach"]
-                if not c.nhom and d.get("nhom"):
-                    c.nhom = d["nhom"]
-                c.is_active = d.get("is_active", True)
-            elif (code, th) in dealer_active_map:
-                c.is_active = dealer_active_map[(code, th)]
-            elif (c.ten_khach.strip().upper(), th) in dealer_active_map:
-                c.is_active = dealer_active_map[(c.ten_khach.strip().upper(), th)]
-            else:
-                c.is_active = True
-
-        existing_keys = {(c.ma_khach.strip().upper(), c.thuong_hieu.strip().upper()) for c in tracked_custs if c.ma_khach}
-        existing_names = {(c.ten_khach.strip().upper(), c.thuong_hieu.strip().upper()) for c in tracked_custs}
-        for d in dealers:
-            code = d.get("ma_khach", "").strip().upper()
-            th = d.get("thuong_hieu", "").strip().upper()
-            name = d.get("ten_khach", "").strip().upper()
-            if (code, th) not in existing_keys and (name, th) not in existing_names:
-                tracked_custs.append(TrackedCustomer(
-                    ma_khach=d.get("ma_khach", ""),
-                    stt=d.get("stt", len(tracked_custs) + 1),
-                    ten_khach=d.get("ten_khach", ""),
-                    nhom=d.get("nhom", ""),
-                    thuong_hieu=th,
-                    row_idx_muc02=0,
-                    col_idx_ma_khach=1,
-                    is_active=d.get("is_active", True)
-                ))
+        try:
+            ExcelWriter.validate_template(
+                template_path, self.current_report, target_date, self.rules.get_dealers(self.current_report)
+            )
+            tracked_custs = ExcelReader.read_tracked_customers(
+                template_path, self.current_report, target_date=target_date,
+                rule_manager=self.rules, dealers=self.rules.get_dealers(self.current_report)
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Lỗi đọc danh sách đại lý", str(exc))
+            return
 
         self.app_results = self.engine.run_report(
             self.current_report, orders, tracked_custs, target_date, only_completed, apply_adjustments=apply_adj
@@ -784,10 +741,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Thiếu tệp", "Chưa tìm thấy tệp mẫu Excel tổng!")
 
     def on_update_excel(self):
-        if not self.app_results:
-            self.on_run_preview()
-            if not self.app_results:
-                return
+        self.on_run_preview()
+        if self.app_results is None:
+            return
 
         target_date = self.get_selected_date()
         if not target_date:
@@ -803,26 +759,20 @@ class MainWindow(QMainWindow):
         try:
             sync_items = ExcelWriter.analyze_master_excel_dealers(template_path, self.current_report, self.rules, target_date=target_date)
         except Exception as e:
-            print(f"Lỗi phân tích đối chiếu Excel: {e}")
-            sync_items = []
+            QMessageBox.critical(self, "Lỗi đối chiếu Mục 02", str(e))
+            return
 
         needs_dialog = any(
             it.get("has_change") or it.get("needs_verify") or it.get("is_conflict")
             for it in sync_items
         )
 
+        confirmed_items = None
         if needs_dialog:
             dlg = SyncMasterExcelDialog(self, self.current_report, sync_items, template_path)
             if dlg.exec() != QDialog.Accepted or not dlg.is_confirmed:
                 return
-            try:
-                ExcelWriter.apply_confirmed_sync_to_sheet(template_path, self.current_report, dlg.confirmed_items, target_date=target_date)
-            except PermissionError as pe:
-                QMessageBox.critical(self, "Tệp đang bị khóa", str(pe))
-                return
-            except Exception as e:
-                QMessageBox.critical(self, "Lỗi đồng bộ mã khách", f"Không thể đồng bộ mã vào Excel: {e}")
-                return
+            confirmed_items = dlg.confirmed_items
         else:
             confirm = QMessageBox.question(
                 self, "Xác nhận cập nhật",
@@ -834,18 +784,20 @@ class MainWindow(QMainWindow):
 
         try:
             saved_path = ExcelWriter.update_summary_excel(
-                template_path, self.current_report, self.app_results, target_date, self.backup_dir, rule_manager=self.rules
+                template_path, self.current_report, self.app_results, target_date, self.backup_dir,
+                rule_manager=self.rules, confirmed_items=confirmed_items
             )
+            sheet_name = ExcelWriter.validate_template(saved_path, self.current_report, target_date)
             QMessageBox.information(
                 self, "Cập nhật thành công",
-                f"Đã cập nhật dữ liệu thành công vào tệp:\n{saved_path}\n\n"
+                f"Đã cập nhật dữ liệu thành công vào tệp:\n{saved_path}\nSheet: {sheet_name}\n\n"
                 f"• Mục 01: Đã điền mã khách và chỉ hiển thị đại lý có phát sinh hợp lệ.\n"
                 f"• Mục 02: Đã lưu số liệu ngày {target_date.strftime('%d/%m/%Y')} và đồng bộ chuẩn hóa danh sách theo dõi."
             )
         except PermissionError as pe:
             QMessageBox.critical(self, "Tệp đang bị khóa", str(pe))
         except Exception as e:
-            QMessageBox.critical(self, "Lỗi cập nhật", f"Không thể cập nhật tệp: {e}")
+            QMessageBox.critical(self, "Lỗi ghi Excel", f"Không thể ghi dữ liệu vào Excel tổng: {e}")
 
     def on_view_file_changed(self):
         idx = self.cbo_view_file.currentIndex()
