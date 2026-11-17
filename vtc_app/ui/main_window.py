@@ -76,11 +76,11 @@ class MainWindow(QMainWindow):
         lbl_rep.setStyleSheet("font-size: 13px; color: #202124;")
         top_bar.addWidget(lbl_rep)
 
+        self.btn_rep_trm = QPushButton("TRM + TPS (Toroma – Topisa)")
         self.btn_rep_tcr = QPushButton("TCR + TML (Tocera – Tomilan)")
         self.btn_rep_tmr = QPushButton("TMR (Tomira)")
-        self.btn_rep_trm = QPushButton("TRM + TPS (Toroma – Topisa)")
 
-        for btn, rep_key in [(self.btn_rep_tcr, "TCR_TML"), (self.btn_rep_tmr, "TMR"), (self.btn_rep_trm, "TRM_TPS")]:
+        for btn, rep_key in [(self.btn_rep_trm, "TRM_TPS"), (self.btn_rep_tcr, "TCR_TML"), (self.btn_rep_tmr, "TMR")]:
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked, r=rep_key: self.on_report_changed(r))
             top_bar.addWidget(btn)
@@ -129,7 +129,7 @@ class MainWindow(QMainWindow):
         self.txt_file_gr = self.create_file_row(grp_files_layout, "Nguồn GRANIT:", self.on_browse_gr)
         self.txt_file_mau = self.create_file_row(grp_files_layout, "Mẫu Excel tổng:", self.on_browse_mau)
         
-        self.chk_remember_mau = QCheckBox("Ghi nhớ Excel tổng cho báo cáo này")
+        self.chk_remember_mau = QCheckBox("Ghi nhớ tệp Excel tổng này")
         self.chk_remember_mau.setChecked(True)
         grp_files_layout.addWidget(self.chk_remember_mau)
         self.txt_file_tay = QLineEdit()
@@ -259,6 +259,15 @@ class MainWindow(QMainWindow):
         return txt
 
     def load_default_paths(self):
+        settings_file = os.path.join(self.config_dir, "settings.json")
+        if os.path.exists(settings_file):
+            try:
+                import json
+                with open(settings_file, "r", encoding="utf-8") as f:
+                    self.settings = json.load(f)
+            except Exception:
+                self.settings = {}
+
         dn_new = os.path.join(self.base_workspace, "Đồng Nai Bảng kê đơn hàng bán 12.11-2026.xlsx")
         dn_old = os.path.join(self.base_workspace, "Đồng Nai.xlsx")
         dn_default = dn_new if os.path.exists(dn_new) else dn_old
@@ -267,9 +276,21 @@ class MainWindow(QMainWindow):
         gr_old = os.path.join(self.base_workspace, "GRANIT.xlsx")
         gr_default = gr_new if os.path.exists(gr_new) else gr_old
 
+        master_default = os.path.join(self.base_workspace, "BÁO CÁO TIÊU THỤ THEO NGÀY(1).xlsx")
+
         self.txt_file_dn.setText(self.settings.get("file_dn", dn_default if os.path.exists(dn_default) else ""))
         self.txt_file_gr.setText(self.settings.get("file_gr", gr_default if os.path.exists(gr_default) else ""))
+        self.txt_file_mau.setText(self.settings.get("master_excel_path", master_default if os.path.exists(master_default) else ""))
         self.refresh_dates_from_sources()
+
+    def save_settings(self):
+        settings_file = os.path.join(self.config_dir, "settings.json")
+        try:
+            import json
+            with open(settings_file, "w", encoding="utf-8") as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print("Lỗi lưu cấu hình settings.json:", e)
 
     def on_report_changed(self, rep_key: str):
         self.current_report = rep_key
@@ -282,9 +303,9 @@ class MainWindow(QMainWindow):
         self.btn_rep_trm.setChecked(is_trm)
 
         # Cập nhật chữ và dấu chọn ✓
+        self.btn_rep_trm.setText("✓ TRM + TPS (Toroma – Topisa)" if is_trm else "TRM + TPS (Toroma – Topisa)")
         self.btn_rep_tcr.setText("✓ TCR + TML (Tocera – Tomilan)" if is_tcr else "TCR + TML (Tocera – Tomilan)")
         self.btn_rep_tmr.setText("✓ TMR (Tomira)" if is_tmr else "TMR (Tomira)")
-        self.btn_rep_trm.setText("✓ TRM + TPS (Toroma – Topisa)" if is_trm else "TRM + TPS (Toroma – Topisa)")
 
         # Nút TCR + TML: Đỏ TOCERA (#c5221f)
         self.btn_rep_tcr.setStyleSheet(f"""
@@ -322,27 +343,12 @@ class MainWindow(QMainWindow):
         # Show adjustment toggle only for TRM_TPS
         self.chk_apply_adj.setVisible(is_trm)
 
-        manual_dir = os.path.join(self.base_workspace, "Dự liệu làm tay")
-        if not os.path.exists(manual_dir):
-            manual_dir = os.path.join(self.base_workspace, "Dữ liệu làm tay")
-
-        if rep_key == "TCR_TML":
-            m_path = self.settings.get("mau_tcr", os.path.join(self.base_workspace, "TCR+TML.xlsx"))
-            h_path = os.path.join(manual_dir, "TCR+TML.xlsx")
-        elif rep_key == "TMR":
-            m_path = self.settings.get("mau_tmr", os.path.join(self.base_workspace, "TMR.xlsx"))
-            h_path = os.path.join(manual_dir, "TMR.xlsx")
-        elif rep_key == "TRM_TPS":
-            m_path = self.settings.get("mau_trm", os.path.join(self.base_workspace, "TRM +TPS.xlsx"))
-            h_path = os.path.join(manual_dir, "TRM.xlsx")
-            if not os.path.exists(h_path):
-                alt_h = os.path.join(self.base_workspace, "dữ liệu làm tay.xlsx")
-                if os.path.exists(alt_h):
-                    h_path = alt_h
-
-        self.txt_file_mau.setText(m_path if os.path.exists(m_path) else "")
-        if hasattr(self, "txt_file_tay") and self.txt_file_tay:
-            self.txt_file_tay.setText(h_path if os.path.exists(h_path) else "")
+        # Giữ nguyên một tệp Excel tổng dùng chung cho cả 3 nhóm
+        master_default = os.path.join(self.base_workspace, "BÁO CÁO TIÊU THỤ THEO NGÀY(1).xlsx")
+        current_mau = self.txt_file_mau.text().strip()
+        if not current_mau or not os.path.exists(current_mau):
+            m_path = self.settings.get("master_excel_path", master_default if os.path.exists(master_default) else "")
+            self.txt_file_mau.setText(m_path)
 
         # Reload tracked customers
         self.reload_muc02_table()
@@ -368,6 +374,7 @@ class MainWindow(QMainWindow):
         if f:
             self.txt_file_dn.setText(f)
             self.settings["file_dn"] = f
+            self.save_settings()
             self.refresh_dates_from_sources()
 
     def on_browse_gr(self):
@@ -375,15 +382,16 @@ class MainWindow(QMainWindow):
         if f:
             self.txt_file_gr.setText(f)
             self.settings["file_gr"] = f
+            self.save_settings()
             self.refresh_dates_from_sources()
 
     def on_browse_mau(self):
         f, _ = QFileDialog.getOpenFileName(self, "Chọn mẫu Excel tổng", self.base_workspace, "Excel Files (*.xlsx *.xls)")
         if f:
             self.txt_file_mau.setText(f)
+            self.settings["master_excel_path"] = f
             if self.chk_remember_mau.isChecked():
-                k = "mau_tcr" if self.current_report == "TCR_TML" else ("mau_tmr" if self.current_report == "TMR" else "mau_trm")
-                self.settings[k] = f
+                self.save_settings()
             self.reload_muc02_table()
 
     def on_browse_tay(self):

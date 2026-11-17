@@ -37,7 +37,8 @@
       "patterns": [
         "30X45*",
         "TTP34XX",
-        "DTTP34XX"
+        "DTTP34XX",
+        "TTPV34XX"
       ]
     },
     {
@@ -58,8 +59,10 @@
       "patterns": [
         "TTP36XX",
         "DTTP36XX",
-        "TTP38XX",
-        "DTTP38XX"
+        "TTP386XX",
+        "TTPV386XX",
+        "TTP0XX",
+        "TTPV0XX"
       ]
     },
     {
@@ -83,12 +86,16 @@
     {
       "name": "40X80",
       "factor": 1.92,
-      "source": "BOTH",
+      "source": "GRANITE",
       "patterns": [
         "40X80*",
         "48XX",
         "P48XX",
+        "PV48XX",
+        "DP48XX",
         "F48XX",
+        "FV48XX",
+        "DF48XX",
         "TTP48XX"
       ]
     },
@@ -112,20 +119,7 @@
         "*16V*",
         "*16 VIÊN*",
         "P30*X*",
-        "F30*X*",
-        "P34*X*",
-        "F34*X*",
-        "*30*X*",
-        "*36*X*",
-        "*38*X*",
-        "TTP360XX",
-        "TTP362XX",
-        "TTP380XX",
-        "TTP382XX",
-        "TTP360XL1",
-        "TTP362XL1",
-        "TTP380XL1",
-        "TTP382XL1"
+        "TTP30XL1"
       ]
     },
     {
@@ -165,8 +159,7 @@
         "50X50*",
         "PZ57XX",
         "TTP5XX",
-        "F5XX",
-        "M5XX"
+        "F5XX"
       ]
     },
     {
@@ -177,9 +170,7 @@
         "60X60*",
         "P6XX",
         "F6XX",
-        "TTP6XX",
-        "TTP660NL1",
-        "TTP663NL1"
+        "TTP6XX"
       ]
     },
     {
@@ -199,11 +190,7 @@
       "patterns": [
         "80X80*",
         "P8XX",
-        "T8XX",
-        "A8XX",
         "F8XX",
-        "V8XX",
-        "M8XX",
         "TTP8XX"
       ]
     }
@@ -246,7 +233,8 @@
       "patterns": [
         "30X45*",
         "TTP34XX",
-        "DTTP34XX"
+        "DTTP34XX",
+        "TTPV34XX"
       ]
     },
     {
@@ -267,8 +255,7 @@
       "patterns": [
         "*HL*",
         "*_H*",
-        "*-H*",
-        "*8V*"
+        "*-H*"
       ]
     },
     {
@@ -278,8 +265,10 @@
       "patterns": [
         "TTP36XX",
         "DTTP36XX",
-        "TTP38XX",
-        "DTTP38XX"
+        "TTP386XX",
+        "TTPV386XX",
+        "TTP0XX",
+        "TTPV0XX"
       ]
     },
     {
@@ -287,7 +276,8 @@
       "factor": 1.44,
       "source": "GRANITE",
       "patterns": [
-        "*8V*"
+        "TH36*8V*",
+        "M36*8V*"
       ]
     },
     {
@@ -306,11 +296,13 @@
     {
       "name": "40x80",
       "factor": 1.92,
-      "source": "BOTH",
+      "source": "GRANITE",
       "patterns": [
         "40X80*",
         "48XX",
         "M48XX",
+        "MV48XX",
+        "DM48XX",
         "TTP48XX"
       ]
     },
@@ -321,7 +313,8 @@
       "patterns": [
         "30X30*",
         "*35*X*",
-        "*38*X*"
+        "*38*X*",
+        "TTP30XL1"
       ]
     },
     {
@@ -377,11 +370,6 @@
       "patterns": [
         "80X80*",
         "M8XX",
-        "T8XX",
-        "P8XX",
-        "A8XX",
-        "F8XX",
-        "V8XX",
         "TTP8XX"
       ]
     }
@@ -416,6 +404,17 @@
       ]
     },
     {
+      "name": "30x45",
+      "factor": 1.62,
+      "source": "BOTH",
+      "patterns": [
+        "30X45*",
+        "TTP34XX",
+        "DTTP34XX",
+        "TTPV34XX"
+      ]
+    },
+    {
       "name": "30x60 ROTIC",
       "factor": 1.8,
       "source": "DONG_NAI",
@@ -433,10 +432,10 @@
       "patterns": [
         "TTP36XX",
         "DTTP36XX",
-        "TTP38XX",
-        "DTTP38XX",
-        "TTPV38XX",
-        "TTPV36XX"
+        "TTP386XX",
+        "TTPV386XX",
+        "TTP0XX",
+        "TTPV0XX"
       ]
     },
     {
@@ -456,12 +455,16 @@
     {
       "name": "40x80",
       "factor": 1.92,
-      "source": "BOTH",
+      "source": "GRANITE",
       "patterns": [
         "40X80*",
         "48XX",
         "T48XX",
         "A48XX",
+        "DT48XX",
+        "DA48XX",
+        "TV48XX",
+        "AV48XX",
         "TTP48XX"
       ]
     },
@@ -475,17 +478,7 @@
         "A30XX",
         "T38XX",
         "A38XX",
-        "*30*X*",
-        "*36*X*",
-        "*38*X*",
-        "TTP360XX",
-        "TTP362XX",
-        "TTP380XX",
-        "TTP382XX",
-        "TTP360XL1",
-        "TTP362XL1",
-        "TTP380XL1",
-        "TTP382XL1"
+        "TTP30XL1"
       ]
     },
     {
@@ -537,9 +530,7 @@
         "T6XX",
         "A6XX",
         "TTP6XX",
-        "T6166NL1",
-        "TTP660NL1",
-        "TTP663NL1"
+        "T6166NL1"
       ]
     },
     {
@@ -560,10 +551,6 @@
         "80X80*",
         "T8XX",
         "A8XX",
-        "P8XX",
-        "F8XX",
-        "V8XX",
-        "M8XX",
         "TTP8XX"
       ]
     }

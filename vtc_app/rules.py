@@ -82,56 +82,57 @@ DEFAULT_SPEC_RULES = {
         {"name": "20X40", "factor": 1.0, "source": "BOTH", "patterns": ["20X40*", "TTP24XX"]},
         {"name": "25X40 (15 V/T)", "factor": 1.5, "source": "BOTH", "patterns": ["25X40*", "TTP220XX", "TTPV220XX", "TTP250XX", "TTP251XX"]},
         {"name": "25X50", "factor": 1.0, "source": "BOTH", "patterns": ["25X50*", "TTP25XX"]},
-        {"name": "30X45  (12 V/T)", "factor": 1.62, "source": "BOTH", "patterns": ["30X45*", "TTP34XX", "DTTP34XX"]},
+        {"name": "30X45  (12 V/T)", "factor": 1.62, "source": "BOTH", "patterns": ["30X45*", "TTP34XX", "DTTP34XX", "TTPV34XX"]},
         {"name": "30X60 ROTIC", "factor": 1.8, "source": "DONG_NAI", "patterns": ["R0XX", "RV0XX", "DR0XX", "*ROTIC*"]},
-        {"name": "30X60 TTP", "factor": 1.44, "source": "GRANITE", "patterns": ["TTP36XX", "DTTP36XX", "TTP38XX", "DTTP38XX"]},
+        {"name": "30X60 TTP", "factor": 1.44, "source": "GRANITE", "patterns": ["TTP36XX", "DTTP36XX", "TTP386XX", "TTPV386XX", "TTP0XX", "TTPV0XX"]},
         {"name": "30X60 TH", "factor": 1.44, "source": "GRANITE", "patterns": ["TH36XX", "TV36XX", "AV36XX", "PV36XX", "FV36XX", "DT36XX", "DA36XX", "P36XX", "F36XX", "DP36XX", "DF36XX"]},
-        {"name": "40X80", "factor": 1.92, "source": "BOTH", "patterns": ["40X80*", "48XX", "P48XX", "F48XX", "TTP48XX"]},
+        {"name": "40X80", "factor": 1.92, "source": "GRANITE", "patterns": ["40X80*", "48XX", "P48XX", "PV48XX", "DP48XX", "F48XX", "FV48XX", "DF48XX", "TTP48XX"]},
         {"name": "30X30 (11 V/T)", "factor": 0.99, "source": "BOTH", "patterns": ["30X30*", "F34XX", "F30XX", "P30XX", "P34XX"]},
-        {"name": "30X30 (16 V/T)", "factor": 1.44, "source": "BOTH", "patterns": ["*16V*", "*16 VIÊN*", "*X*"]},
+        {"name": "30X30 (16 V/T)", "factor": 1.44, "source": "BOTH", "patterns": ["*16V*", "*16 VIÊN*", "P30*X*", "TTP30XL1"]},
         {"name": "40X40", "factor": 0.96, "source": "BOTH", "patterns": ["40X40*", "TTP4XX"]},
         {"name": "40X40 (12V/T)", "factor": 1.92, "source": "BOTH", "patterns": ["TTP423XX", "TTP425XX", "TTP4268XX", "TTP473XX", "TTP447XX"]},
         {"name": "40X60", "factor": 1.92, "source": "BOTH", "patterns": ["40X60*"]},
-        {"name": "50X50 (6 V/T)", "factor": 1.5, "source": "BOTH", "patterns": ["50X50*", "PZ57XX", "TTP5XX", "F5XX", "M5XX"]},
+        {"name": "50X50 (6 V/T)", "factor": 1.5, "source": "BOTH", "patterns": ["50X50*", "PZ57XX", "TTP5XX", "F5XX"]},
         {"name": "60x60 (5 V/T)", "factor": 1.8, "source": "DONG_NAI", "patterns": ["60X60*", "P6XX", "F6XX", "TTP6XX"]},
         {"name": "60x60 ĐÁ (5 V/T)", "factor": 1.8, "source": "GRANITE", "patterns": ["P66XX", "F66XX", "TTP66XX"]},
-        {"name": "80x80 ĐÁ", "factor": 1.92, "source": "BOTH", "patterns": ["80X80*", "P8XX", "T8XX", "A8XX", "F8XX", "V8XX", "M8XX", "TTP8XX"]}
+        {"name": "80x80 ĐÁ", "factor": 1.92, "source": "BOTH", "patterns": ["80X80*", "P8XX", "F8XX", "TTP8XX"]}
     ],
     "TMR": [
         {"name": "20x40", "factor": 1.0, "source": "BOTH", "patterns": ["20X40*", "TTP24XX"]},
         {"name": "25x40", "factor": 1.5, "source": "BOTH", "patterns": ["25X40*", "TTP220XX", "TTPV220XX", "TTP250XX", "TTP251XX"]},
         {"name": "25x50", "factor": 1.0, "source": "BOTH", "patterns": ["25X50*", "TTP25XX"]},
-        {"name": "30x45", "factor": 1.62, "source": "BOTH", "patterns": ["30X45*", "TTP34XX", "DTTP34XX"]},
+        {"name": "30x45", "factor": 1.62, "source": "BOTH", "patterns": ["30X45*", "TTP34XX", "DTTP34XX", "TTPV34XX"]},
         {"name": "30x60 ROTIC", "factor": 1.8, "source": "DONG_NAI", "patterns": ["R0XX", "RV0XX", "DR0XX", "*ROTIC*"]},
-        {"name": "30x60 TTP(8v)", "factor": 1.44, "source": "GRANITE", "patterns": ["*HL*", "*_H*", "*-H*", "*8V*"]},
-        {"name": "30x60 TTP(10v)", "factor": 1.8, "source": "GRANITE", "patterns": ["TTP36XX", "DTTP36XX", "TTP38XX", "DTTP38XX"]},
-        {"name": "30x60 TH(8v)", "factor": 1.44, "source": "GRANITE", "patterns": ["*8V*"]},
+        {"name": "30x60 TTP(8v)", "factor": 1.44, "source": "GRANITE", "patterns": ["*HL*", "*_H*", "*-H*"]},
+        {"name": "30x60 TTP(10v)", "factor": 1.8, "source": "GRANITE", "patterns": ["TTP36XX", "DTTP36XX", "TTP386XX", "TTPV386XX", "TTP0XX", "TTPV0XX"]},
+        {"name": "30x60 TH(8v)", "factor": 1.44, "source": "GRANITE", "patterns": ["TH36*8V*", "M36*8V*"]},
         {"name": "30x60 TH(10v)", "factor": 1.8, "source": "GRANITE", "patterns": ["TH36XX", "TV36XX", "MV36XX", "DV36XX", "M36XX", "DM36XX"]},
-        {"name": "40x80", "factor": 1.92, "source": "BOTH", "patterns": ["40X80*", "48XX", "M48XX", "TTP48XX"]},
-        {"name": "30x30", "factor": 1.44, "source": "BOTH", "patterns": ["30X30*", "*35*X*", "*38*X*"]},
+        {"name": "40x80", "factor": 1.92, "source": "GRANITE", "patterns": ["40X80*", "48XX", "M48XX", "MV48XX", "DM48XX", "TTP48XX"]},
+        {"name": "30x30", "factor": 1.44, "source": "BOTH", "patterns": ["30X30*", "*35*X*", "*38*X*", "TTP30XL1"]},
         {"name": "40x40", "factor": 1.44, "source": "BOTH", "patterns": ["40X40*", "TTP4XX"]},
         {"name": "40x60", "factor": 1.92, "source": "BOTH", "patterns": ["40X60*"]},
         {"name": "50x50", "factor": 1.5, "source": "BOTH", "patterns": ["50X50*", "M55XX", "TTP5XX"]},
         {"name": "60x60", "factor": 1.8, "source": "DONG_NAI", "patterns": ["60X60*", "M6XX", "TTP6XX"]},
         {"name": "60x60 (P)", "factor": 1.8, "source": "GRANITE", "patterns": ["M66XX", "TTP66XX"]},
-        {"name": "80x80 (P)", "factor": 1.92, "source": "BOTH", "patterns": ["80X80*", "M8XX", "T8XX", "P8XX", "A8XX", "F8XX", "V8XX", "TTP8XX"]}
+        {"name": "80x80 (P)", "factor": 1.92, "source": "BOTH", "patterns": ["80X80*", "M8XX", "TTP8XX"]}
     ],
     "TRM_TPS": [
         {"name": "20x40", "factor": 0.96, "source": "BOTH", "patterns": ["20X40*", "TTP24XX"]},
         {"name": "25x40 (15v/t)", "factor": 1.5, "source": "BOTH", "patterns": ["25X40*", "TTP220XX", "TTPV220XX"]},
         {"name": "25x50", "factor": 1.0, "source": "BOTH", "patterns": ["25X50*", "TTP25XX"]},
+        {"name": "30x45", "factor": 1.62, "source": "BOTH", "patterns": ["30X45*", "TTP34XX", "DTTP34XX", "TTPV34XX"]},
         {"name": "30x60 ROTIC", "factor": 1.8, "source": "DONG_NAI", "patterns": ["R0XX", "RV0XX", "DR0XX", "*ROTIC*"]},
-        {"name": "30x60 TTP(10v)", "factor": 1.8, "source": "GRANITE", "patterns": ["TTP36XX", "DTTP36XX", "TTP38XX", "DTTP38XX", "TTPV38XX", "TTPV36XX"]},
+        {"name": "30x60 TTP(10v)", "factor": 1.8, "source": "GRANITE", "patterns": ["TTP36XX", "DTTP36XX", "TTP386XX", "TTPV386XX", "TTP0XX", "TTPV0XX"]},
         {"name": "30x60(10v) TRM/TPS", "factor": 1.8, "source": "GRANITE", "patterns": ["T36XX", "A36XX", "TV36XX", "AV36XX", "DT36XX", "DA36XX", "TH36XX"]},
-        {"name": "40x80", "factor": 1.92, "source": "BOTH", "patterns": ["40X80*", "48XX", "T48XX", "A48XX", "TTP48XX"]},
-        {"name": "30x30 (16v/t)", "factor": 1.44, "source": "BOTH", "patterns": ["30X30*", "T30XX", "A30XX", "T38XX", "A38XX"]},
+        {"name": "40x80", "factor": 1.92, "source": "GRANITE", "patterns": ["40X80*", "48XX", "T48XX", "A48XX", "DT48XX", "DA48XX", "TV48XX", "AV48XX", "TTP48XX"]},
+        {"name": "30x30 (16v/t)", "factor": 1.44, "source": "BOTH", "patterns": ["30X30*", "T30XX", "A30XX", "T38XX", "A38XX", "TTP30XL1"]},
         {"name": "40x40", "factor": 0.96, "source": "BOTH", "patterns": ["40X40*", "TTP4XX"]},
         {"name": "40x40 (12v/t)", "factor": 1.92, "source": "BOTH", "patterns": ["TTP423XX", "TTP425XX", "TTP4268XX", "TTP473XX", "TTP447XX"]},
         {"name": "40x60", "factor": 1.8, "source": "BOTH", "patterns": ["40X60*"]},
         {"name": "50x50 (06v/t)", "factor": 1.5, "source": "BOTH", "patterns": ["50X50*", "A50XX", "TTP5XX", "TZ51XX"]},
         {"name": "60x60 (05v/t)", "factor": 1.8, "source": "DONG_NAI", "patterns": ["60X60*", "T6XX", "A6XX", "TTP6XX", "T6166NL1"]},
         {"name": "60x60.P (05v/t)", "factor": 1.8, "source": "GRANITE", "patterns": ["T66XX", "A66XX", "TTP66XX"]},
-        {"name": "80x80.P (03v/t)", "factor": 1.92, "source": "BOTH", "patterns": ["80X80*", "T8XX", "A8XX", "P8XX", "F8XX", "V8XX", "M8XX", "TTP8XX"]}
+        {"name": "80x80.P (03v/t)", "factor": 1.92, "source": "BOTH", "patterns": ["80X80*", "T8XX", "A8XX", "TTP8XX"]}
     ]
 }
 
@@ -360,22 +361,24 @@ class RuleManager:
     @staticmethod
     def identify_brand(report_type: str, item_code: str, customer_brand: str) -> str:
         ic = item_code.upper().strip()
+        # Họ TTP (kể cả DTTP, TTPV) dùng TH của đại lý
+        if ic.startswith("TTP") or ic.startswith("DTTP"):
+            return customer_brand
+
         if report_type == "TCR_TML":
-            if ic.startswith("P"):
+            if ic.startswith("P") or ic.startswith("DP") or ic.startswith("PV"):
                 return "TCR"
-            elif ic.startswith("F"):
+            elif ic.startswith("F") or ic.startswith("DF") or ic.startswith("FV"):
                 return "TML"
-            else:
-                return customer_brand if customer_brand in ["TCR", "TML"] else "TCR"
+            return customer_brand if customer_brand in ["TCR", "TML"] else "TCR"
         elif report_type == "TMR":
             return "TMR"
         elif report_type == "TRM_TPS":
-            if ic.startswith("T") and not ic.startswith("TTP"):
+            if (ic.startswith("T") or ic.startswith("DT") or ic.startswith("TV")) and not ic.startswith("TTP"):
                 return "TRM"
-            elif ic.startswith("A"):
+            elif ic.startswith("A") or ic.startswith("DA") or ic.startswith("AV"):
                 return "TPS"
-            else:
-                return customer_brand if customer_brand in ["TRM", "TPS"] else "TRM"
+            return customer_brand if customer_brand in ["TRM", "TPS"] else "TRM"
         return customer_brand
 
     def match_tile_pattern(self, report_type: str, brand: str, item_code: str, item_name: str) -> Tuple[Optional[str], Optional[str], float, int, bool, List[str]]:
@@ -472,17 +475,17 @@ class RuleManager:
                 return "25X40 (15 V/T)"
             if "25X50" in name or (ic.startswith("TTP25") and not ic.startswith("TTP250") and not ic.startswith("TTP251") and "X" not in ic):
                 return "25X50"
-            if "30X45" in name or ic.startswith("TTP34") or ic.startswith("DTTP34"):
+            if "30X45" in name or re.search(r'^(DTTP|TTPV|TTP)34', ic):
                 return "30X45  (12 V/T)"
             if ic.startswith("R0") or ic.startswith("RV0") or ic.startswith("DR0") or "ROT" in name:
                 return "30X60 ROTIC"
             if ("30X60" in name and "TH" in ic) or ic.startswith("TH36") or ic.startswith("TV36") or ic.startswith("AV36") or ic.startswith("PV36") or ic.startswith("FV36") or ic.startswith("DT36") or ic.startswith("DA36") or ic.startswith("P36") or ic.startswith("F36") or ic.startswith("DP36") or ic.startswith("DF36"):
                 return "30X60 TH"
-            if ("30X60" in name and "TTP" in ic) or (((ic.startswith("TTP36") or ic.startswith("DTTP36") or ic.startswith("TTP38") or ic.startswith("DTTP38"))) and "X" not in ic):
+            if ("30X60" in name and "TTP" in ic) or re.search(r'^(DTTP|TTPV|TTP)(0|36|38\d{3}|V?386)', ic):
                 return "30X60 TTP"
-            if "40X80" in name or "48" in ic[:5]:
+            if "40X80" in name or re.search(r'^(P|PV|DP|F|FV|DF|TTP)48', ic) or "48" in ic[:5]:
                 return "40X80"
-            if "30X30" in name or ic.startswith("F34") or ic.startswith("F30") or ic.startswith("P30") or ic.startswith("P34") or ("30" in ic[:5] and "X" in ic) or ("36" in ic[:5] and "X" in ic) or ("38" in ic[:5] and "X" in ic):
+            if "30X30" in name or ic == "TTP30XL1" or re.search(r'^(DTTP|TTPV|TTP)3\d{2}(?!\d)', ic) or ic.startswith("F34") or ic.startswith("F30") or ic.startswith("P30") or ic.startswith("P34") or ("30" in ic[:5] and "X" in ic) or ("36" in ic[:5] and "X" in ic) or ("38" in ic[:5] and "X" in ic):
                 if "16V" in name or "16 VIÊN" in name or "X" in ic:
                     return "30X30 (16 V/T)"
                 return "30X30 (11 V/T)"
@@ -492,12 +495,12 @@ class RuleManager:
                 return "40X40"
             if "40X60" in name:
                 return "40X60"
-            if "50X50" in name or ic.startswith("PZ57") or ic.startswith("TTP5") or ic.startswith("F5") or ic.startswith("M5"):
+            if "50X50" in name or ic.startswith("PZ57") or ic.startswith("TTP5") or ic.startswith("F5"):
                 return "50X50 (6 V/T)"
             is_80_code = (
-                ic.startswith(("P8", "T8", "A8", "F8", "V8", "M8", "TTP8", "DP8", "DT8", "DA8", "DF8", "DV8", "DM8", "DTTP8"))
+                ic.startswith(("P8", "F8", "TTP8", "DP8", "DF8", "DTTP8"))
                 or ("80X80" in name)
-            ) and not ic.startswith(("P6", "T6", "A6", "F6", "V6", "M6", "TTP6", "DP6", "DT6", "DA6", "DF6", "DV6", "DM6", "DTTP6"))
+            ) and not ic.startswith(("P6", "F6", "TTP6", "DP6", "DF6", "DTTP6"))
             if is_80_code:
                 return "80x80 ĐÁ"
             if "60X60" in name or ic.startswith("P6") or ic.startswith("F6") or ic.startswith("TTP6"):
@@ -514,11 +517,11 @@ class RuleManager:
                 return "25x40"
             if "25X50" in name or (ic.startswith("TTP25") and not ic.startswith("TTP250") and not ic.startswith("TTP251") and "X" not in ic):
                 return "25x50"
-            if "30X45" in name or ic.startswith("TTP34") or ic.startswith("DTTP34"):
+            if "30X45" in name or re.search(r'^(DTTP|TTPV|TTP)34', ic):
                 return "30x45"
             if ic.startswith("R0") or ic.startswith("RV0") or ic.startswith("DR0") or "ROT" in name:
                 return "30x60 ROTIC"
-            if ("30X60" in name and "TTP" in ic) or (((ic.startswith("TTP36") or ic.startswith("DTTP36") or ic.startswith("TTP38") or ic.startswith("DTTP38"))) and "X" not in ic):
+            if ("30X60" in name and "TTP" in ic) or re.search(r'^(DTTP|TTPV|TTP)(0|36|38\d{3}|V?386)', ic):
                 is_8v = ("8V" in name or "8 VIÊN" in name or "8V/T" in name or "8 VIÊN/THÙNG" in name or "8V" in name.replace(" ", "") or "HL" in ic or "_H" in ic or "-H" in ic)
                 if is_8v:
                     return "30x60 TTP(8v)"
@@ -528,9 +531,9 @@ class RuleManager:
                 if is_8v:
                     return "30x60 TH(8v)"
                 return "30x60 TH(10v)"
-            if "40X80" in name or "48" in ic[:5]:
+            if "40X80" in name or re.search(r'^(M|MV|DM|TTP)48', ic) or "48" in ic[:5]:
                 return "40x80"
-            if "30X30" in name or ("35" in ic[:5] and "X" in ic) or ("38" in ic[:5] and "X" in ic):
+            if "30X30" in name or ic == "TTP30XL1" or re.search(r'^(DTTP|TTPV|TTP)3\d{2}(?!\d)', ic) or ("35" in ic[:5] and "X" in ic) or ("38" in ic[:5] and "X" in ic):
                 return "30x30"
             if "40X40" in name or ic.startswith("TTP4"):
                 return "40x40"
@@ -539,9 +542,9 @@ class RuleManager:
             if "50X50" in name or ic.startswith("M55") or ic.startswith("TTP5"):
                 return "50x50"
             is_80_tmr = (
-                ic.startswith(("M8", "T8", "P8", "A8", "F8", "V8", "TTP8", "DM8", "DT8", "DP8", "DA8", "DF8", "DV8", "DTTP8"))
+                ic.startswith(("M8", "TTP8", "DM8", "DTTP8"))
                 or ("80X80" in name)
-            ) and not ic.startswith(("M6", "T6", "P6", "A6", "F6", "V6", "TTP6", "DM6", "DT6", "DP6", "DA6", "DF6", "DV6", "DTTP6"))
+            ) and not ic.startswith(("M6", "TTP6", "DM6", "DTTP6"))
             if is_80_tmr:
                 return "80x80 (P)"
             if "60X60" in name or ic.startswith("M6") or ic.startswith("TTP6"):
@@ -558,15 +561,17 @@ class RuleManager:
                 return "25x40 (15v/t)"
             if "25X50" in name or ic.startswith("TTP25"):
                 return "25x50"
+            if "30X45" in name or re.search(r'^(DTTP|TTPV|TTP)34', ic):
+                return "30x45"
             if ic.startswith("R0") or ic.startswith("RV0") or ic.startswith("DR0") or "ROT" in name:
                 return "30x60 ROTIC"
-            if ("30X60" in name and "TTP" in ic) or ic.startswith("TTP36") or ic.startswith("DTTP36") or ((ic.startswith("TTP38") or ic.startswith("DTTP38") or ic.startswith("TTPV38") or ic.startswith("TTPV36")) and "X" not in ic):
+            if ("30X60" in name and "TTP" in ic) or re.search(r'^(DTTP|TTPV|TTP)(0|36|38\d{3}|V?386)', ic):
                 return "30x60 TTP(10v)"
             if ("30X60" in name and ("TRM" in name or "TPS" in name)) or ic.startswith("T36") or ic.startswith("A36") or ic.startswith("TV36") or ic.startswith("AV36") or ic.startswith("DT36") or ic.startswith("DA36") or ic.startswith("TH36"):
                 return "30x60(10v) TRM/TPS"
-            if "40X80" in name or "48" in ic[:5]:
+            if "40X80" in name or re.search(r'^(T|TV|DT|A|AV|DA|TTP)48', ic) or "48" in ic[:5]:
                 return "40x80"
-            if "30X30" in name or ("30" in ic[:5] and "X" in ic) or ("38" in ic[:5] and "X" in ic):
+            if "30X30" in name or ic == "TTP30XL1" or re.search(r'^(DTTP|TTPV|TTP)3\d{2}(?!\d)', ic) or ("30" in ic[:5] and "X" in ic) or ("38" in ic[:5] and "X" in ic):
                 return "30x30 (16v/t)"
             if "40X40" in name or ic.startswith("TTP4"):
                 if "12V" in name or "12 VIÊN" in name or ic.startswith("TTP423") or ic.startswith("TTP425") or ic.startswith("TTP4268") or ic.startswith("TTP473") or ic.startswith("TTP447"):
@@ -576,7 +581,7 @@ class RuleManager:
                 return "40x60"
             if "50X50" in name or ic.startswith("A50") or ic.startswith("TTP5") or ic.startswith("TZ51"):
                 return "50x50 (06v/t)"
-            if "80X80" in name or (len(ic) > 2 and (ic[0] in "TAFPVM" or ic.startswith("TTP")) and "8" in ic[1:4]):
+            if "80X80" in name or (len(ic) > 2 and (ic[0] in "TA" or ic.startswith("TTP")) and "8" in ic[1:4]):
                 return "80x80.P (03v/t)"
             if "60X60" in name or ic.startswith("T6") or ic.startswith("A6") or ic.startswith("TTP6"):
                 m = re.match(r"^([A-Za-z]+)(\d+)", ic)
@@ -617,12 +622,26 @@ class RuleManager:
         source_reason = "Hợp lệ theo nguồn"
 
         # Check source constraints
+        is_40x80 = ("40X80" in matched_spec.upper() or "40X80" in item_name.upper() or "48" in ic[:5])
+        rule_40x80_source = "GRANITE"
+        for sp in self.get_spec_rules(report_type):
+            if "40X80" in sp.get("name", "").upper():
+                rule_40x80_source = sp.get("source", "GRANITE")
+                break
+
         is_rotic = "ROTIC" in matched_spec.upper() or ic.startswith("R0") or ic.startswith("DR0")
         is_30x60_brand_or_tpp = ("30X60" in matched_spec.upper() and not is_rotic)
         is_60_thuong = matched_spec in ["60x60 (05v/t)", "60x60 (5 V/T)", "60x60"]
         is_60_da = matched_spec in ["60x60.P (05v/t)", "60x60 ĐÁ (5 V/T)", "60x60 (P)"]
 
-        if is_rotic and ("30" in matched_spec or "ROTIC" in matched_spec.upper()):
+        if is_40x80:
+            if rule_40x80_source == "GRANITE" and not is_gr:
+                is_source_valid = False
+                source_reason = "Sai nguồn: 40×80 chỉ lấy từ GRANITE"
+            elif rule_40x80_source == "DONG_NAI" and not is_dn:
+                is_source_valid = False
+                source_reason = "Sai nguồn: 40×80 chỉ lấy từ Đồng Nai"
+        elif is_rotic and ("30" in matched_spec or "ROTIC" in matched_spec.upper()):
             if not is_dn:
                 is_source_valid = False
                 source_reason = "Sai nguồn: 30×60 ROTIC chỉ lấy từ Đồng Nai"

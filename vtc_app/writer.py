@@ -72,7 +72,7 @@ class ExcelWriter:
         return dest_path
 
     @staticmethod
-    def copy_row_format(ws, src_row: int, dst_row: int, max_col: int = 25):
+    def copy_row_format(ws, src_row: int, dst_row: int, max_col: int = 26):
         for c in range(1, max_col + 1):
             sc = ws.cell(src_row, c)
             dc = ws.cell(dst_row, c)
@@ -86,45 +86,22 @@ class ExcelWriter:
     @staticmethod
     def get_target_sheet(wb, report_type: str, target_date: Optional[date] = None):
         """
-        Xác định chính xác sheet đích cần xử lý theo loại báo cáo và ngày/tháng,
-        không phụ thuộc vào wb.active (vốn có thể trỏ sai sheet nếu người dùng đã lưu sheet khác trước đó).
+        Xác định sheet đích:
+        - Nếu có target_date và sheet theo ngày (dd.mm.yyyy) tồn tại, trả về sheet đó.
+        - Nếu có target_date và sheet theo tháng tồn tại, trả về sheet đó.
+        - Mặc định tìm '09.11.2026' hoặc wb.active.
         """
-        if report_type == "TCR_TML":
-            if target_date:
-                sheet_day_str = target_date.strftime("%d.%m.%Y")
-                if sheet_day_str in wb.sheetnames:
-                    return wb[sheet_day_str]
-            return wb.active
-
-        elif report_type == "TMR":
-            if target_date:
-                month_code = target_date.strftime("T%m.%Y")
-                month_sub = target_date.strftime("%m.%Y")
-                for s in wb.sheetnames:
-                    if month_code.lower() in s.lower() or month_sub in s:
-                        return wb[s]
+        if target_date:
+            sheet_day_str = target_date.strftime("%d.%m.%Y")
+            if sheet_day_str in wb.sheetnames:
+                return wb[sheet_day_str]
+            month_code = target_date.strftime("T%m.%Y")
             for s in wb.sheetnames:
-                if "THEO DOI" in s.upper():
+                if month_code in s:
                     return wb[s]
-            return wb.sheetnames[-1]
-
-        elif report_type == "TRM_TPS":
-            if target_date:
-                month_code = target_date.strftime("T%m.%Y")
-                m_num = f"T{target_date.month}"
-                for s in wb.sheetnames:
-                    if month_code in s:
-                        return wb[s]
-                for s in wb.sheetnames:
-                    if m_num in s and "BC NGAY" in s.upper():
-                        return wb[s]
-                for s in wb.sheetnames:
-                    if m_num in s:
-                        return wb[s]
-            for s in wb.sheetnames:
-                if "BC NGAY" in s.upper():
-                    return wb[s]
-            return wb.active
+        for s in wb.sheetnames:
+            if "09.11.2026" in s or "BC NGAY" in s.upper():
+                return wb[s]
         return wb.active
 
     @staticmethod
@@ -136,11 +113,7 @@ class ExcelWriter:
     ) -> List[Dict[str, Any]]:
         """
         Phân tích đối chiếu Mục 02 của tệp Excel tổng với danh sách đại lý đã xác minh trong AppData.
-        Phát hiện:
-        - Các dòng thiếu mã khách hàng (cần điền từ AppData).
-        - Các dòng khác mã khách hàng (xung đột mã giữa Excel và AppData).
-        - Các dòng nhóm khác nhau (cần chuẩn hóa từ số 1, 2 sang VIP, D1, Gpp).
-        - Riêng mã CH9999 của Bảo Việt: gắn cờ xác minh trước khi ghi.
+        Hỗ trợ cả tệp Excel tổng hợp nhất 3 khối và các tệp cũ.
         """
         if not os.path.exists(template_path):
             return []
@@ -149,34 +122,45 @@ class ExcelWriter:
         ws = ExcelWriter.get_target_sheet(wb, report_type, target_date)
         items = []
 
-        if report_type == "TCR_TML":
-            sub_tcr_row = None
-            sub_tml_row = None
-            for r in range(28, ws.max_row + 1):
-                for c in range(1, 5):
-                    v = str(ws.cell(r, c).value or "").upper()
-                    if "TỔNG THƯƠNG HIỆU TOCERA" in v and not sub_tcr_row:
-                        sub_tcr_row = r
-                    elif "TỔNG THƯƠNG HIỆU TOMILAN" in v and not sub_tml_row:
-                        sub_tml_row = r
-            if not sub_tcr_row:
-                sub_tcr_row = 42
-            if not sub_tml_row:
-                sub_tml_row = 52
+        markers = {}
+        for r in range(1, min(ws.max_row + 1, 120)):
+            vals = [str(ws.cell(r, c).value or "").strip().upper() for c in range(1, 6)]
+            combined = " | ".join(vals)
+            if "TỔNG NHÓM TRM + TPS" in combined or "TỔNG NHÓM TRM+TPS" in combined:
+                markers["TRM_TPS_END"] = r
+            elif "TỔNG NHÓM TCR + TML" in combined or "TỔNG NHÓM TCR+TML" in combined:
+                markers["TCR_TML_END"] = r
+            elif "TỔNG NHÓM TMR" in combined:
+                markers["TMR_END"] = r
 
-            app_dealers = rule_manager.get_dealers("TCR_TML") if rule_manager else []
-            app_by_name = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "TCR")): d for d in app_dealers}
-            app_by_code = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "TCR")): d for d in app_dealers if d.get("ma_khach")}
+        is_unified = bool(markers.get("TRM_TPS_END") and markers.get("TCR_TML_END"))
 
-            for r in range(29, sub_tml_row):
-                if r == sub_tcr_row:
-                    continue
-                th = "TCR" if r < sub_tcr_row else "TML"
+        if is_unified:
+            if report_type == "TRM_TPS":
+                b_start = 29
+                b_end = markers["TRM_TPS_END"] - 1
+                default_th = "TRM"
+            elif report_type == "TCR_TML":
+                b_start = markers["TRM_TPS_END"] + 1
+                b_end = markers["TCR_TML_END"] - 1
+                default_th = "TCR"
+            else:  # TMR
+                b_start = markers["TCR_TML_END"] + 1
+                b_end = markers.get("TMR_END", ws.max_row) - 1
+                default_th = "TMR"
+
+            app_dealers = rule_manager.get_dealers(report_type) if rule_manager else []
+            app_by_name = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", default_th)): d for d in app_dealers}
+            app_by_code = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", default_th)): d for d in app_dealers if d.get("ma_khach")}
+
+            for r in range(b_start, b_end + 1):
                 ex_code = str(ws.cell(r, 1).value or "").strip()
                 if ex_code.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]:
                     ex_code = ""
                 ex_name = str(ws.cell(r, 4).value or "").strip()
                 ex_grp = str(ws.cell(r, 5).value or "").strip()
+                th = str(ws.cell(r, 6).value or default_th).strip().upper()
+
                 if not ex_name and not ex_code:
                     continue
 
@@ -230,166 +214,52 @@ class ExcelWriter:
                     "is_checked": not is_conflict
                 })
 
-        elif report_type == "TRM_TPS":
-            sub_trm_row = None
-            sub_tps_row = None
-            for r in range(24, ws.max_row + 1):
-                for c in range(1, 4):
+            wb.close()
+            return items
+
+        # Fallback cho mẫu cũ riêng rẽ
+        if report_type == "TCR_TML":
+            sub_tcr_row = None
+            sub_tml_row = None
+            for r in range(28, ws.max_row + 1):
+                for c in range(1, 5):
                     v = str(ws.cell(r, c).value or "").upper()
-                    if "TỔNG TOROMA" in v and not sub_trm_row:
-                        sub_trm_row = r
-                    elif "TỔNG TOPISA" in v and not sub_tps_row:
-                        sub_tps_row = r
-            if not sub_trm_row:
-                sub_trm_row = 34
-            if not sub_tps_row:
-                sub_tps_row = 43
+                    if "TỔNG THƯƠNG HIỆU TOCERA" in v and not sub_tcr_row:
+                        sub_tcr_row = r
+                    elif "TỔNG THƯƠNG HIỆU TOMILAN" in v and not sub_tml_row:
+                        sub_tml_row = r
+            if not sub_tcr_row: sub_tcr_row = 42
+            if not sub_tml_row: sub_tml_row = 52
 
-            app_dealers = rule_manager.get_dealers("TRM_TPS") if rule_manager else []
-            app_by_name = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "TRM")): d for d in app_dealers}
-            app_by_code = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "TRM")): d for d in app_dealers if d.get("ma_khach")}
+            app_dealers = rule_manager.get_dealers("TCR_TML") if rule_manager else []
+            app_by_name = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "TCR")): d for d in app_dealers}
+            app_by_code = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "TCR")): d for d in app_dealers if d.get("ma_khach")}
 
-            for r in range(25, sub_tps_row):
-                if r in [sub_trm_row, sub_trm_row + 1]:
-                    continue
-                th = "TRM" if r < sub_trm_row else "TPS"
+            for r in range(29, sub_tml_row):
+                if r == sub_tcr_row: continue
+                th = "TCR" if r < sub_tcr_row else "TML"
                 ex_code = str(ws.cell(r, 1).value or "").strip()
-                if ex_code.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]:
-                    ex_code = ""
-                ex_name = str(ws.cell(r, 3).value or "").strip()
-                ex_grp = str(ws.cell(r, 4).value or "").strip()
-                if not ex_name or "CỬA HÀNG" in ex_name.upper():
-                    continue
+                if ex_code.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]: ex_code = ""
+                ex_name = str(ws.cell(r, 4).value or "").strip()
+                ex_grp = str(ws.cell(r, 5).value or "").strip()
+                if not ex_name and not ex_code: continue
 
-                matched = None
-                if ex_code:
-                    matched = app_by_code.get((ex_code.upper(), th))
-                if not matched and ex_name:
-                    matched = app_by_name.get((normalize_dealer_name(ex_name), th))
-                if not matched and ex_name:
-                    name_norm = normalize_dealer_name(ex_name)
-                    cand = [d for d in app_dealers if normalize_dealer_name(d.get("ten_khach", "")) == name_norm]
-                    if len(cand) == 1:
-                        matched = cand[0]
-
+                matched = app_by_code.get((ex_code.upper(), th)) if ex_code else None
+                if not matched and ex_name: matched = app_by_name.get((normalize_dealer_name(ex_name), th))
                 app_code = str(matched.get("ma_khach") or "").strip() if matched else ""
                 app_grp = str(matched.get("nhom") or "").strip() if matched else ""
 
-                has_code_change = bool(app_code and app_code.upper() != ex_code.upper())
-                has_group_change = bool(app_grp and app_grp.upper() != ex_grp.upper())
-                is_conflict = bool(ex_code and app_code and ex_code.upper() != app_code.upper())
-                needs_verify = bool("BẢO VIỆT" in ex_name.upper() or app_code == "CH9999")
-
-                note = ""
-                if is_conflict:
-                    note = f"⚠️ Xung đột mã: Excel='{ex_code}' vs App='{app_code}'"
-                elif needs_verify:
-                    note = "⚠️ Cần xác minh mã Bảo Việt trước khi ghi (mã tạm CH9999)"
-                elif has_code_change and has_group_change:
-                    note = f"Cập nhật mã '{app_code}' & nhóm '{app_grp}'"
-                elif has_code_change:
-                    note = f"Cập nhật mã '{app_code}'"
-                elif has_group_change:
-                    note = f"Cập nhật nhóm '{app_grp}'"
-                else:
-                    note = "Đã khớp chuẩn"
-
                 items.append({
-                    "row_num": r,
-                    "th": th,
-                    "name": ex_name,
-                    "excel_code": ex_code,
-                    "app_code": app_code if app_code else ex_code,
-                    "excel_group": ex_grp,
-                    "app_group": app_grp if app_grp else ex_grp,
-                    "has_code_change": has_code_change,
-                    "has_group_change": has_group_change,
-                    "has_change": has_code_change or has_group_change,
-                    "is_conflict": is_conflict,
-                    "needs_verify": needs_verify,
-                    "note": note,
-                    "is_checked": not is_conflict
+                    "row_num": r, "th": th, "name": ex_name,
+                    "excel_code": ex_code, "app_code": app_code if app_code else ex_code,
+                    "excel_group": ex_grp, "app_group": app_grp if app_grp else ex_grp,
+                    "has_code_change": bool(app_code and app_code.upper() != ex_code.upper()),
+                    "has_group_change": bool(app_grp and app_grp.upper() != ex_grp.upper()),
+                    "has_change": bool(app_code and app_code.upper() != ex_code.upper()) or bool(app_grp and app_grp.upper() != ex_grp.upper()),
+                    "is_conflict": bool(ex_code and app_code and ex_code.upper() != app_code.upper()),
+                    "needs_verify": bool("BẢO VIỆT" in ex_name.upper() or app_code == "CH9999"),
+                    "note": "Chuẩn hóa", "is_checked": not bool(ex_code and app_code and ex_code.upper() != app_code.upper())
                 })
-
-        elif report_type == "TMR":
-            sub_tmr_row = None
-            for r in range(10, ws.max_row + 1):
-                for c in range(1, 4):
-                    v = str(ws.cell(r, c).value or "").upper()
-                    if "TỔNG (M²)" in v or "TỔNG" in v:
-                        sub_tmr_row = r
-                        break
-                if sub_tmr_row:
-                    break
-            if not sub_tmr_row:
-                sub_tmr_row = 13
-
-            app_dealers = rule_manager.get_dealers("TMR", brand="TMR") if rule_manager else []
-            app_by_name = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
-            app_by_code = {str(d.get("ma_khach") or "").strip().upper(): d for d in app_dealers if d.get("ma_khach")}
-
-            has_code_col = (ws.cell(9, 1).value == "Mã khách hàng" or ws.cell(3, 1).value == "Mã khách hàng")
-
-            for r in range(10, sub_tmr_row):
-                if has_code_col:
-                    ex_code = str(ws.cell(r, 1).value or "").strip()
-                    if ex_code.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]:
-                        ex_code = ""
-                    ex_name = str(ws.cell(r, 3).value or "").strip()
-                    ex_grp = str(ws.cell(r, 4).value or "").strip()
-                else:
-                    ex_code = ""
-                    ex_name = str(ws.cell(r, 2).value or "").strip()
-                    ex_grp = str(ws.cell(r, 3).value or "").strip()
-
-                if not ex_name or "CỬA HÀNG" in ex_name.upper():
-                    continue
-
-                matched = None
-                if ex_code:
-                    matched = app_by_code.get(ex_code.upper())
-                if not matched and ex_name:
-                    matched = app_by_name.get(normalize_dealer_name(ex_name))
-
-                app_code = str(matched.get("ma_khach") or "").strip() if matched else ""
-                app_grp = str(matched.get("nhom") or "").strip() if matched else ""
-
-                has_code_change = bool(app_code and app_code.upper() != ex_code.upper())
-                has_group_change = bool(app_grp and app_grp.upper() != ex_grp.upper())
-                is_conflict = bool(ex_code and app_code and ex_code.upper() != app_code.upper())
-                needs_verify = bool("BẢO VIỆT" in ex_name.upper() or app_code == "CH9999")
-
-                note = ""
-                if is_conflict:
-                    note = f"⚠️ Xung đột mã: Excel='{ex_code}' vs App='{app_code}'"
-                elif needs_verify:
-                    note = "⚠️ Cần xác minh mã Bảo Việt trước khi ghi (mã tạm CH9999)"
-                elif has_code_change and has_group_change:
-                    note = f"Cập nhật mã '{app_code}' & nhóm '{app_grp}'"
-                elif has_code_change:
-                    note = f"Cập nhật mã '{app_code}'"
-                elif has_group_change:
-                    note = f"Cập nhật nhóm '{app_grp}'"
-                else:
-                    note = "Đã khớp chuẩn"
-
-                items.append({
-                    "row_num": r,
-                    "th": "TMR",
-                    "name": ex_name,
-                    "excel_code": ex_code,
-                    "app_code": app_code if app_code else ex_code,
-                    "excel_group": ex_grp,
-                    "app_group": app_grp if app_grp else ex_grp,
-                    "has_code_change": has_code_change,
-                    "has_group_change": has_group_change,
-                    "has_change": has_code_change or has_group_change,
-                    "is_conflict": is_conflict,
-                    "needs_verify": needs_verify,
-                    "note": note,
-                    "is_checked": not is_conflict
-                })
-
         wb.close()
         return items
 
@@ -410,57 +280,60 @@ class ExcelWriter:
         wb = openpyxl.load_workbook(template_path, data_only=False)
         ws = ExcelWriter.get_target_sheet(wb, report_type, target_date)
 
-        if report_type == "TCR_TML":
+        markers = {}
+        for r in range(1, min(ws.max_row + 1, 120)):
+            vals = [str(ws.cell(r, c).value or "").strip().upper() for c in range(1, 6)]
+            combined = " | ".join(vals)
+            if "TỔNG NHÓM TRM + TPS" in combined or "TỔNG NHÓM TRM+TPS" in combined:
+                markers["TRM_TPS_END"] = r
+            elif "TỔNG NHÓM TCR + TML" in combined or "TỔNG NHÓM TCR+TML" in combined:
+                markers["TCR_TML_END"] = r
+
+        is_unified = bool(markers.get("TRM_TPS_END") and markers.get("TCR_TML_END"))
+
+        if is_unified:
             ws.cell(27, 1).value = "Mã khách hàng"
             for it in confirmed_items:
                 r = it.get("row_num")
                 if r:
                     code_to_write = it.get("final_code", it.get("app_code", ""))
                     grp_to_write = it.get("final_group", it.get("app_group", ""))
-                    th_to_write = it.get("th", "TCR")
-                    if code_to_write:
-                        ws.cell(r, 1).value = code_to_write
-                    if grp_to_write:
-                        ws.cell(r, 5).value = grp_to_write
-                    if th_to_write:
-                        ws.cell(r, 6).value = th_to_write
-
-        elif report_type == "TRM_TPS":
-            ws.cell(24, 1).value = "Mã khách hàng"
-            for it in confirmed_items:
-                r = it.get("row_num")
-                if r:
-                    code_to_write = it.get("final_code", it.get("app_code", ""))
-                    grp_to_write = it.get("final_group", it.get("app_group", ""))
-                    th_to_write = it.get("th", "TRM")
-                    if code_to_write:
-                        ws.cell(r, 1).value = code_to_write
-                    if grp_to_write:
-                        ws.cell(r, 4).value = grp_to_write
-                    if th_to_write:
-                        ws.cell(r, 5).value = th_to_write
-
-        elif report_type == "TMR":
-            # Đảm bảo cột 1 là Mã khách hàng nếu chưa có
-            if ws.cell(9, 1).value != "Mã khách hàng" and ws.cell(3, 1).value != "Mã khách hàng":
-                ws.insert_cols(1)
-                ws.cell(3, 1).value = "Mã khách hàng"
-                ws.cell(9, 1).value = "Mã khách hàng"
-            if ws.cell(3, 5).value != "TH" and ws.cell(9, 5).value != "TH":
-                ws.insert_cols(5)
-                ws.cell(3, 5).value = "TH"
-                ws.cell(9, 5).value = "TH"
-
-            for it in confirmed_items:
-                r = it.get("row_num")
-                if r:
-                    code_to_write = it.get("final_code", it.get("app_code", ""))
-                    grp_to_write = it.get("final_group", it.get("app_group", ""))
-                    if code_to_write:
-                        ws.cell(r, 1).value = code_to_write
-                    if grp_to_write:
-                        ws.cell(r, 4).value = grp_to_write
-                    ws.cell(r, 5).value = "TMR"
+                    th_to_write = it.get("th", "")
+                    if code_to_write: ws.cell(r, 1).value = code_to_write
+                    if grp_to_write: ws.cell(r, 5).value = grp_to_write
+                    if th_to_write: ws.cell(r, 6).value = th_to_write
+        else:
+            if report_type == "TCR_TML":
+                ws.cell(27, 1).value = "Mã khách hàng"
+                for it in confirmed_items:
+                    r = it.get("row_num")
+                    if r:
+                        code_to_write = it.get("final_code", it.get("app_code", ""))
+                        grp_to_write = it.get("final_group", it.get("app_group", ""))
+                        th_to_write = it.get("th", "TCR")
+                        if code_to_write: ws.cell(r, 1).value = code_to_write
+                        if grp_to_write: ws.cell(r, 5).value = grp_to_write
+                        if th_to_write: ws.cell(r, 6).value = th_to_write
+            elif report_type == "TRM_TPS":
+                ws.cell(24, 1).value = "Mã khách hàng"
+                for it in confirmed_items:
+                    r = it.get("row_num")
+                    if r:
+                        code_to_write = it.get("final_code", it.get("app_code", ""))
+                        grp_to_write = it.get("final_group", it.get("app_group", ""))
+                        th_to_write = it.get("th", "TRM")
+                        if code_to_write: ws.cell(r, 1).value = code_to_write
+                        if grp_to_write: ws.cell(r, 4).value = grp_to_write
+                        if th_to_write: ws.cell(r, 5).value = th_to_write
+            elif report_type == "TMR":
+                for it in confirmed_items:
+                    r = it.get("row_num")
+                    if r:
+                        code_to_write = it.get("final_code", it.get("app_code", ""))
+                        grp_to_write = it.get("final_group", it.get("app_group", ""))
+                        if code_to_write: ws.cell(r, 1).value = code_to_write
+                        if grp_to_write: ws.cell(r, 4).value = grp_to_write
+                        ws.cell(r, 5).value = "TMR"
 
         temp_dir = tempfile.gettempdir()
         temp_file = os.path.join(temp_dir, f"vtc_sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
@@ -483,8 +356,8 @@ class ExcelWriter:
     ) -> str:
         """
         Cập nhật kết quả vào tệp Excel tổng, giữ nguyên định dạng, công thức và bố cục.
-        - Mục 01: Có mã khách và CHỈ hiện đại lý có phát sinh hợp lệ.
-        - Mục 02: Đồng bộ danh sách theo dõi, tự động chèn dòng trước dòng tổng khi có đại lý mới, mở rộng vùng công thức.
+        - Mục 01: Có mã khách và CHỈ hiện đại lý có phát sinh hợp lệ. Khi cập nhật một nhóm, giữ nguyên số liệu của các nhóm khác trong ngày.
+        - Mục 02: Đồng bộ danh sách theo dõi, chia 3 nhóm (TRM+TPS, TCR+TML, TMR) + Tổng chung.
         """
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Không tìm thấy tệp Excel tổng: {template_path}")
@@ -497,23 +370,40 @@ class ExcelWriter:
 
         day_str = target_date.strftime("%d/%m/%Y")
         sheet_day_str = target_date.strftime("%d.%m.%Y")
-        month_str = target_date.strftime("thang %m.%Y")
-        month_code = target_date.strftime("T%m.%Y")
         day_header_short = target_date.strftime("%d/%m")
 
         muc01_rows = app_result.get("muc01_rows", [])
 
-        if report_type == "TCR_TML":
-            # Sheet theo ngày
+        # Kiểm tra bố cục 3 khối chuẩn trong workbook
+        first_ws = wb.active
+        markers = {}
+        for r in range(1, min(first_ws.max_row + 1, 120)):
+            vals = [str(first_ws.cell(r, c).value or "").strip().upper() for c in range(1, 6)]
+            combined = " | ".join(vals)
+            if "TỔNG NHÓM TRM + TPS" in combined or "TỔNG NHÓM TRM+TPS" in combined:
+                markers["TRM_TPS_END"] = r
+            elif "TỔNG NHÓM TCR + TML" in combined or "TỔNG NHÓM TCR+TML" in combined:
+                markers["TCR_TML_END"] = r
+            elif "TỔNG NHÓM TMR" in combined:
+                markers["TMR_END"] = r
+            elif "TỔNG CHUNG" in combined:
+                markers["GRAND_TOTAL"] = r
+
+        is_unified = bool(markers.get("TRM_TPS_END") and markers.get("TCR_TML_END"))
+
+        if is_unified:
+            # === CẬP NHẬT TỆP EXCEL TỔNG HỢP NHẤT (CHUẨN 3 KHỐI) ===
+            is_new_sheet = False
             if sheet_day_str in wb.sheetnames:
                 ws = wb[sheet_day_str]
             else:
-                source_sheet = wb.active
-                ws = wb.copy_worksheet(source_sheet)
+                base_ws = wb["09.11.2026"] if "09.11.2026" in wb.sheetnames else wb.active
+                ws = wb.copy_worksheet(base_ws)
                 ws.title = sheet_day_str
+                is_new_sheet = True
 
-            # Tiêu đề ngày dòng 1
-            ws.cell(1, 2).value = f"BÁO CÁO BÁN HÀNG NGÀY {day_str} NHÓM VIP - D1 - GPP TOCERA VÀ TOMILAN"
+            # Tiêu đề dòng 1
+            ws.cell(1, 2).value = f"BÁO CÁO BÁN HÀNG NGÀY {day_str} NHÓM VIP - D1 - GPP"
 
             # Headers Mục 01 ở dòng 2
             ws.cell(2, 1).value = "Mã khách hàng"
@@ -525,35 +415,79 @@ class ExcelWriter:
             ws.cell(2, 8).value = "∑SL THÙNG"
 
             col_map = {}
-            for c in range(9, ws.max_column + 1):
+            for c in range(9, 26):
                 val = ws.cell(2, c).value
                 if val:
                     col_map[str(val).replace('\n', ' ').strip()] = c
 
-            # Mục 01: Dòng 3 đến 24
+            # Đọc các dòng Mục 01 đang có của các nhóm KHÁC (để giữ lại)
+            existing_other_rows = []
+            if not is_new_sheet:
+                for r in range(3, 25):
+                    name = ws.cell(r, 4).value
+                    th = ws.cell(r, 6).value
+                    if name and str(name).strip() and "TỔNG" not in str(name).upper():
+                        th_clean = str(th or "").strip().upper()
+                        row_grp = None
+                        if th_clean in ["TRM", "TPS"]: row_grp = "TRM_TPS"
+                        elif th_clean in ["TCR", "TML"]: row_grp = "TCR_TML"
+                        elif th_clean == "TMR": row_grp = "TMR"
+
+                        if row_grp and row_grp != report_type:
+                            specs_dict = {}
+                            for c in range(9, 26):
+                                v = ws.cell(r, c).value
+                                if v is not None and v != "":
+                                    try:
+                                        q = float(v)
+                                        if q > 0:
+                                            for sp_k, sp_c in col_map.items():
+                                                if sp_c == c:
+                                                    specs_dict[sp_k] = q
+                                                    break
+                                    except (ValueError, TypeError):
+                                        pass
+                            existing_other_rows.append({
+                                "ma_khach": str(ws.cell(r, 1).value or "").strip(),
+                                "ten_khach": str(name).strip(),
+                                "nhom": str(ws.cell(r, 5).value or "").strip(),
+                                "thuong_hieu": th_clean,
+                                "specs": specs_dict
+                            })
+
+            # Ghép danh sách Mục 01: các nhóm khác giữ nguyên + nhóm hiện tại cập nhật mới
+            combined_rows = existing_other_rows + [dict(r) for r in muc01_rows]
+
+            # Sắp xếp đúng theo thứ tự 3 nhóm: 1. TRM+TPS, 2. TCR+TML, 3. TMR
+            def sort_key(item):
+                th = item.get("thuong_hieu", "").upper()
+                order = {"TRM": 10, "TPS": 11, "TCR": 20, "TML": 21, "TMR": 30}.get(th, 99)
+                return (order, item.get("ten_khach", ""))
+
+            combined_rows.sort(key=sort_key)
+
+            # Ghi Mục 01 (dòng 3 đến 24)
             start_r = 3
             end_r = 24
-            num_active = len(muc01_rows)
+            num_active = len(combined_rows)
             for i in range(end_r - start_r + 1):
                 curr_r = start_r + i
                 if i < num_active:
-                    cust_data = muc01_rows[i]
+                    cust_data = combined_rows[i]
                     ws.cell(curr_r, 1).value = cust_data.get("ma_khach", "")
                     ws.cell(curr_r, 2).value = i + 1
                     ws.cell(curr_r, 4).value = cust_data.get("ten_khach", "")
                     ws.cell(curr_r, 5).value = cust_data.get("nhom", "")
                     ws.cell(curr_r, 6).value = cust_data.get("thuong_hieu", "")
 
-                    # Công thức m2 và thùng dòng phát sinh
+                    # Công thức m2 và thùng
                     ws.cell(curr_r, 7).value = f"=I{curr_r}+J{curr_r}*1.5+K{curr_r}+L{curr_r}*1.62+M{curr_r}*1.8+N{curr_r}*1.44+O{curr_r}*1.44+P{curr_r}*1.92+Q{curr_r}*0.99+R{curr_r}*1.44+S{curr_r}*0.96+T{curr_r}*1.92+U{curr_r}*1.92+V{curr_r}*1.5+W{curr_r}*1.8+X{curr_r}*1.8+Y{curr_r}*1.92"
                     ws.cell(curr_r, 8).value = f"=SUM(I{curr_r}:Y{curr_r})"
 
-                    # Xóa các cột specs cũ
-                    for c in range(9, ws.max_column + 1):
+                    for c in range(9, 26):
                         ws.cell(curr_r, c).value = None
 
-                    # Ghi specs mới
-                    for sp, qty in cust_data["specs"].items():
+                    for sp, qty in cust_data.get("specs", {}).items():
                         c_idx = match_column(sp, col_map)
                         if c_idx:
                             ws.cell(curr_r, c_idx).value = qty
@@ -567,9 +501,8 @@ class ExcelWriter:
                     ws.cell(curr_r, 6).value = None
                     ws.cell(curr_r, 7).value = f"=I{curr_r}+J{curr_r}*1.5+K{curr_r}+L{curr_r}*1.62+M{curr_r}*1.8+N{curr_r}*1.44+O{curr_r}*1.44+P{curr_r}*1.92+Q{curr_r}*0.99+R{curr_r}*1.44+S{curr_r}*0.96+T{curr_r}*1.92+U{curr_r}*1.92+V{curr_r}*1.5+W{curr_r}*1.8+X{curr_r}*1.8+Y{curr_r}*1.92"
                     ws.cell(curr_r, 8).value = f"=SUM(I{curr_r}:Y{curr_r})"
-                    for c in range(9, ws.max_column + 1):
+                    for c in range(9, 26):
                         ws.cell(curr_r, c).value = None
-
                     ws.row_dimensions[curr_r].hidden = True
 
             # Dòng 25: TỔNG Mục 01
@@ -589,77 +522,6 @@ class ExcelWriter:
             ws.cell(27, 6).value = "TH"
             ws.cell(27, 7).value = "∑SL MÉT"
 
-            # Dynamic Dealer Sync for TCR_TML if rule_manager provided
-            sub_tcr_row = None
-            sub_tml_row = None
-            for r in range(28, ws.max_row + 1):
-                for c in range(1, 5):
-                    v = str(ws.cell(r, c).value or "").upper()
-                    if "TỔNG THƯƠNG HIỆU TOCERA" in v and not sub_tcr_row:
-                        sub_tcr_row = r
-                    elif "TỔNG THƯƠNG HIỆU TOMILAN" in v and not sub_tml_row:
-                        sub_tml_row = r
-
-            if not sub_tcr_row:
-                sub_tcr_row = 42
-            if not sub_tml_row:
-                sub_tml_row = 52
-
-            if rule_manager:
-                all_dealers = rule_manager.get_dealers("TCR_TML")
-                tcr_dealers = [d for d in all_dealers if d.get("thuong_hieu") == "TCR"]
-                tml_dealers = [d for d in all_dealers if d.get("thuong_hieu") == "TML"]
-
-                # 1. Sync TCR dealers
-                existing_tcr = {}
-                for r in range(29, sub_tcr_row):
-                    code = str(ws.cell(r, 1).value or "").strip().upper()
-                    name = str(ws.cell(r, 4).value or "").strip().upper()
-                    if code or name:
-                        existing_tcr[(code, name)] = r
-
-                for d in tcr_dealers:
-                    d_code = str(d.get("ma_khach") or "").strip().upper()
-                    d_name = str(d.get("ten_khach") or "").strip().upper()
-                    found = any((d_code and d_code == k[0]) or (d_name and d_name == k[1]) for k in existing_tcr)
-                    if not found:
-                        ws.insert_rows(sub_tcr_row, 1)
-                        new_r = sub_tcr_row
-                        ExcelWriter.copy_row_format(ws, new_r - 1, new_r, 26)
-                        ws.cell(new_r, 1).value = d.get("ma_khach", "")
-                        ws.cell(new_r, 2).value = sub_tcr_row - 28
-                        ws.cell(new_r, 4).value = d.get("ten_khach", "")
-                        ws.cell(new_r, 5).value = d.get("nhom", "")
-                        ws.cell(new_r, 6).value = "TCR"
-                        sub_tcr_row += 1
-                        sub_tml_row += 1
-                        existing_tcr[(d_code, d_name)] = new_r
-
-                # 2. Sync TML dealers
-                existing_tml = {}
-                tml_start_row = sub_tcr_row + 1
-                for r in range(tml_start_row, sub_tml_row):
-                    code = str(ws.cell(r, 1).value or "").strip().upper()
-                    name = str(ws.cell(r, 4).value or "").strip().upper()
-                    if code or name:
-                        existing_tml[(code, name)] = r
-
-                for d in tml_dealers:
-                    d_code = str(d.get("ma_khach") or "").strip().upper()
-                    d_name = str(d.get("ten_khach") or "").strip().upper()
-                    found = any((d_code and d_code == k[0]) or (d_name and d_name == k[1]) for k in existing_tml)
-                    if not found:
-                        ws.insert_rows(sub_tml_row, 1)
-                        new_r = sub_tml_row
-                        ExcelWriter.copy_row_format(ws, new_r - 1, new_r, 26)
-                        ws.cell(new_r, 1).value = d.get("ma_khach", "")
-                        ws.cell(new_r, 2).value = sub_tml_row - tml_start_row + 1
-                        ws.cell(new_r, 4).value = d.get("ten_khach", "")
-                        ws.cell(new_r, 5).value = d.get("nhom", "")
-                        ws.cell(new_r, 6).value = "TML"
-                        sub_tml_row += 1
-                        existing_tml[(d_code, d_name)] = new_r
-
             # Tìm cột ngày tương ứng trong Mục 02 (từ Col 8 trở đi)
             target_col = None
             for c in range(8, ws.max_column + 1):
@@ -667,540 +529,127 @@ class ExcelWriter:
                 if isinstance(cell_val, datetime) and cell_val.date() == target_date:
                     target_col = c
                     break
-                elif isinstance(cell_val, str) and day_header_short in cell_val:
+                elif isinstance(cell_val, date) and cell_val == target_date:
+                    target_col = c
+                    break
+                elif cell_val and day_header_short in str(cell_val):
                     target_col = c
                     break
 
-            # Lập chỉ mục đại lý từ RuleManager để đồng bộ mã cho cả đại lý không phát sinh đơn
-            app_dealers = rule_manager.get_dealers("TCR_TML") if rule_manager else []
-            app_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "TCR")): d for d in app_dealers}
-            app_by_code_th = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "TCR")): d for d in app_dealers if d.get("ma_khach")}
+            if not target_col:
+                target_col = max(ws.max_column + 1, 8)
+                ws.cell(27, target_col).value = datetime.combine(target_date, datetime.min.time())
+                dow_map = {0: "THỨ 2", 1: "THỨ 3", 2: "THỨ 4", 3: "THỨ 5", 4: "THỨ 6", 5: "THỨ 7", 6: "CHỦ NHẬT"}
+                ws.cell(28, target_col).value = dow_map.get(target_date.weekday(), "")
+
+            # Re-scan markers on current ws
+            sub_trm_row = 45
+            sub_tcr_row = 68
+            sub_tmr_row = 72
+            grand_total_row = 73
+
+            for r in range(28, min(ws.max_row + 1, 120)):
+                v = str(ws.cell(r, 2).value or "").upper()
+                if "TỔNG NHÓM TRM + TPS" in v or "TỔNG NHÓM TRM+TPS" in v:
+                    sub_trm_row = r
+                elif "TỔNG NHÓM TCR + TML" in v or "TỔNG NHÓM TCR+TML" in v:
+                    sub_tcr_row = r
+                elif "TỔNG NHÓM TMR" in v:
+                    sub_tmr_row = r
+                elif "TỔNG CHUNG" in v:
+                    grand_total_row = r
+
+            if report_type == "TRM_TPS":
+                b_start = 29
+                b_end = sub_trm_row - 1
+                curr_sub_row = sub_trm_row
+                default_th = "TRM"
+            elif report_type == "TCR_TML":
+                b_start = sub_trm_row + 1
+                b_end = sub_tcr_row - 1
+                curr_sub_row = sub_tcr_row
+                default_th = "TCR"
+            else:  # TMR
+                b_start = sub_tcr_row + 1
+                b_end = sub_tmr_row - 1
+                curr_sub_row = sub_tmr_row
+                default_th = "TMR"
+
+            app_dealers = rule_manager.get_dealers(report_type) if rule_manager else []
+            app_by_code_th = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "").strip().upper()): d for d in app_dealers if d.get("ma_khach")}
+            app_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "").strip().upper()): d for d in app_dealers}
             app_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
 
-            muc01_by_code_th = {
-                (row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                for row in muc01_rows if row.get("ma_khach")
-            }
-            muc01_by_name_th = {
-                (row["ten_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                for row in muc01_rows
-            }
+            muc01_by_code_th = {(row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row for row in muc01_rows if row.get("ma_khach")}
+            muc01_by_name_th = {(normalize_dealer_name(row["ten_khach"]), row["thuong_hieu"].strip().upper()): row for row in muc01_rows}
+            muc01_by_name_only = {normalize_dealer_name(row["ten_khach"]): row for row in muc01_rows}
 
-            # Cập nhật Mục 02 cho TCR và TML (đồng bộ mã đại lý kể cả không phát sinh đơn)
-            for r in range(29, sub_tml_row):
-                if r == sub_tcr_row:
-                    continue
-                name = ws.cell(r, 4).value
-                raw_code = ws.cell(r, 1).value
-                th = ws.cell(r, 6).value or ("TCR" if r < sub_tcr_row else "TML")
-                th = str(th).strip().upper()
-
-                code_clean = str(raw_code or "").strip()
-                if code_clean.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]:
-                    code_clean = ""
-
-                name_clean = str(name or "").strip()
-                name_norm = normalize_dealer_name(name_clean)
+            for r in range(b_start, b_end + 1):
+                raw_code = str(ws.cell(r, 1).value or "").strip()
+                if raw_code.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]: raw_code = ""
+                name = str(ws.cell(r, 4).value or "").strip()
+                name_norm = normalize_dealer_name(name)
+                th = str(ws.cell(r, 6).value or default_th).strip().upper()
 
                 rule_dealer = None
-                if code_clean:
-                    rule_dealer = app_by_code_th.get((code_clean.upper(), th))
+                if raw_code:
+                    rule_dealer = app_by_code_th.get((raw_code.upper(), th))
                 if not rule_dealer and name_norm:
                     rule_dealer = app_by_name_th.get((name_norm, th))
                 if not rule_dealer and name_norm:
                     rule_dealer = app_by_name_only.get(name_norm)
 
-                if not code_clean and rule_dealer and rule_dealer.get("ma_khach"):
-                    code_clean = rule_dealer["ma_khach"]
-                    ws.cell(r, 1).value = code_clean
+                if not raw_code and rule_dealer and rule_dealer.get("ma_khach"):
+                    if not ("BẢO VIỆT" in name.upper() and rule_dealer["ma_khach"] == "CH9999"):
+                        raw_code = rule_dealer["ma_khach"]
+                        ws.cell(r, 1).value = raw_code
 
                 if rule_dealer:
                     if not ws.cell(r, 5).value and rule_dealer.get("nhom"):
                         ws.cell(r, 5).value = rule_dealer["nhom"]
-                    ws.cell(r, 6).value = th
+                    if not ws.cell(r, 6).value and rule_dealer.get("thuong_hieu"):
+                        ws.cell(r, 6).value = rule_dealer["thuong_hieu"]
+                        th = rule_dealer["thuong_hieu"].upper()
 
-                if target_col:
-                    matched_data = None
-                    if code_clean:
-                        matched_data = muc01_by_code_th.get((code_clean.upper(), th))
-                    if not matched_data and name_clean:
-                        matched_data = muc01_by_name_th.get((name_clean.upper(), th))
+                matched = None
+                if raw_code:
+                    matched = muc01_by_code_th.get((raw_code.upper(), th))
+                if not matched and name:
+                    matched = muc01_by_name_th.get((name_norm, th))
+                if not matched and name:
+                    matched = muc01_by_name_only.get(name_norm)
 
-                    if matched_data:
-                        ws.cell(r, target_col).value = matched_data["tong_m2"]
-                    else:
-                        ws.cell(r, target_col).value = None
-
-                # Công thức tổng thương hiệu và tổng ngày ở Mục 02
-                cl_t = get_column_letter(target_col)
-                # TỔNG THƯƠNG HIỆU TOCERA
-                ws.cell(sub_tcr_row, target_col).value = f"=SUM({cl_t}29:{cl_t}{sub_tcr_row - 1})"
-                # TỔNG THƯƠNG HIỆU TOMILAN
-                ws.cell(sub_tml_row, target_col).value = f"=SUM({cl_t}{sub_tcr_row + 1}:{cl_t}{sub_tml_row - 1})"
-                # TỔNG M2 (Row sub_tml_row + 1)
-                row_tot_m2 = sub_tml_row + 1
-                ws.cell(row_tot_m2, target_col).value = f"=SUM({cl_t}{sub_tcr_row},{cl_t}{sub_tml_row})"
-
-        elif report_type == "TMR":
-            ws = ExcelWriter.get_target_sheet(wb, report_type, target_date)
-
-            # Kiểm tra nếu chưa có cột Mã khách hàng tại cột 1
-            if ws.cell(3, 1).value != "Mã khách hàng":
-                ws.insert_cols(1)
-                ws.cell(3, 1).value = "Mã khách hàng"
-                ws.cell(9, 1).value = "Mã khách hàng"
-
-            # Kiểm tra nếu chưa có cột TH tại cột 5 (ngay sau NHÓM)
-            if ws.cell(3, 5).value != "TH":
-                ws.insert_cols(5)
-                ws.cell(3, 5).value = "TH"
-                ws.cell(9, 5).value = "TH"
-
-            # Dòng 2 tiêu đề
-            try:
-                ws.cell(2, 7).value = f"{day_str} NHÓM D1 - Gpp TOMIRA"
-            except Exception:
-                pass
-
-            # Headers Mục 01 ở dòng 3
-            ws.cell(3, 1).value = "Mã khách hàng"
-            ws.cell(3, 2).value = "STT"
-            ws.cell(3, 3).value = "CỬA HÀNG"
-            ws.cell(3, 4).value = "NHÓM"
-            ws.cell(3, 5).value = "TH"
-            ws.cell(3, 6).value = "TỔNG (mét)"
-            ws.cell(3, 7).value = "Tổng (thùng)"
-
-            col_map = {}
-            for c in range(8, ws.max_column + 1):
-                val = ws.cell(3, c).value
-                if val:
-                    col_map[str(val).replace('\n', ' ').strip()] = c
-
-            # Mục 01: Dòng 4 đến 6
-            start_r = 4
-            end_r = 6
-            num_active = len(muc01_rows)
-            for i in range(end_r - start_r + 1):
-                curr_r = start_r + i
-                if i < num_active:
-                    cust_data = muc01_rows[i]
-                    ws.cell(curr_r, 1).value = cust_data.get("ma_khach", "")
-                    ws.cell(curr_r, 2).value = i + 1
-                    ws.cell(curr_r, 3).value = cust_data.get("ten_khach", "")
-                    ws.cell(curr_r, 4).value = cust_data.get("nhom", "")
-                    ws.cell(curr_r, 5).value = "TMR"
-
-                    # Công thức m2 và thùng
-                    ws.cell(curr_r, 6).value = f"=H{curr_r}+(I{curr_r}*1.5)+J{curr_r}+(K{curr_r}*1.62)+(L{curr_r}*1.8)+(M{curr_r}*1.44)+(N{curr_r}*1.8)+(O{curr_r}*1.44)+(P{curr_r}*1.8)+(Q{curr_r}*1.92)+(R{curr_r}*1.44)+(S{curr_r}*1.44)+(T{curr_r}*1.92)+(U{curr_r}*1.5)+(V{curr_r}*1.8)+(W{curr_r}*1.8)+(X{curr_r}*1.92)"
-                    ws.cell(curr_r, 7).value = f"=SUM(H{curr_r}:X{curr_r})"
-
-                    for c in range(8, ws.max_column + 1):
-                        ws.cell(curr_r, c).value = None
-
-                    for sp, qty in cust_data["specs"].items():
-                        c_idx = match_column(sp, col_map)
-                        if c_idx:
-                            ws.cell(curr_r, c_idx).value = qty
-
-                    ws.row_dimensions[curr_r].hidden = False
+                if matched:
+                    ws.cell(r, target_col).value = matched["tong_m2"]
                 else:
-                    ws.cell(curr_r, 1).value = None
-                    ws.cell(curr_r, 2).value = None
-                    ws.cell(curr_r, 3).value = None
-                    ws.cell(curr_r, 4).value = None
-                    ws.cell(curr_r, 5).value = None
-                    ws.cell(curr_r, 6).value = f"=H{curr_r}+(I{curr_r}*1.5)+J{curr_r}+(K{curr_r}*1.62)+(L{curr_r}*1.8)+(M{curr_r}*1.44)+(N{curr_r}*1.8)+(O{curr_r}*1.44)+(P{curr_r}*1.8)+(Q{curr_r}*1.92)+(R{curr_r}*1.44)+(S{curr_r}*1.44)+(T{curr_r}*1.92)+(U{curr_r}*1.5)+(V{curr_r}*1.8)+(W{curr_r}*1.8)+(X{curr_r}*1.92)"
-                    ws.cell(curr_r, 7).value = f"=SUM(H{curr_r}:X{curr_r})"
-                    for c in range(8, ws.max_column + 1):
-                        ws.cell(curr_r, c).value = None
+                    ws.cell(r, target_col).value = None
 
-                    ws.row_dimensions[curr_r].hidden = True
+                # Công thức Col 7 dòng đại lý
+                last_col_l = get_column_letter(max(27, ws.max_column))
+                ws.cell(r, 7).value = f"=SUM(H{r}:{last_col_l}{r})"
 
-            # Dòng 7: TỔNG Mục 01
-            ws.row_dimensions[7].hidden = False
-            ws.cell(7, 1).value = "TỔNG"
-            ws.cell(7, 6).value = "=SUM(F4:F6)"
-            ws.cell(7, 7).value = "=SUM(G4:G6)"
-            for c in range(8, 25):
-                cl = get_column_letter(c)
-                ws.cell(7, c).value = f"=SUM({cl}4:{cl}6)"
+            # Cập nhật công thức tổng nhóm và tổng chung tại target_col và Col 7
+            cl_t = get_column_letter(target_col)
+            # Tổng nhóm TRM+TPS
+            ws.cell(sub_trm_row, target_col).value = f"=SUM({cl_t}29:{cl_t}{sub_trm_row - 1})"
+            ws.cell(sub_trm_row, 7).value = f"=SUM(G29:G{sub_trm_row - 1})"
+            # Tổng nhóm TCR+TML
+            ws.cell(sub_tcr_row, target_col).value = f"=SUM({cl_t}{sub_trm_row + 1}:{cl_t}{sub_tcr_row - 1})"
+            ws.cell(sub_tcr_row, 7).value = f"=SUM(G{sub_trm_row + 1}:G{sub_tcr_row - 1})"
+            # Tổng nhóm TMR
+            ws.cell(sub_tmr_row, target_col).value = f"=SUM({cl_t}{sub_tcr_row + 1}:{cl_t}{sub_tmr_row - 1})"
+            ws.cell(sub_tmr_row, 7).value = f"=SUM(G{sub_tcr_row + 1}:G{sub_tmr_row - 1})"
+            # Tổng chung
+            ws.cell(grand_total_row, target_col).value = f"=SUM({cl_t}{sub_trm_row},{cl_t}{sub_tcr_row},{cl_t}{sub_tmr_row})"
+            ws.cell(grand_total_row, 7).value = f"=SUM(G{sub_trm_row},G{sub_tcr_row},G{sub_tmr_row})"
 
-            # Headers Mục 02 ở dòng 9
-            ws.cell(9, 1).value = "Mã khách hàng"
-            ws.cell(9, 2).value = "STT"
-            ws.cell(9, 3).value = "CỬA HÀNG"
-            ws.cell(9, 4).value = "NHÓM"
-            ws.cell(9, 5).value = "TH"
-            ws.cell(9, 6).value = "TỔNG\n(m²)"
-
-            # Dynamic Dealer Sync for TMR
-            sub_tmr_row = None
-            for r in range(10, ws.max_row + 1):
-                for c in range(1, 4):
-                    v = str(ws.cell(r, c).value or "").upper()
-                    if "TỔNG (M²)" in v or "TỔNG" in v:
-                        sub_tmr_row = r
-                        break
-                if sub_tmr_row:
-                    break
-            if not sub_tmr_row:
-                sub_tmr_row = 13
-
-            if rule_manager:
-                tmr_dealers = rule_manager.get_dealers("TMR", brand="TMR")
-                existing_tmr = {}
-                for r in range(10, sub_tmr_row):
-                    code = str(ws.cell(r, 1).value or "").strip().upper()
-                    name = str(ws.cell(r, 3).value or "").strip().upper()
-                    if code or name:
-                        existing_tmr[(code, name)] = r
-
-                for d in tmr_dealers:
-                    d_code = str(d.get("ma_khach") or "").strip().upper()
-                    d_name = str(d.get("ten_khach") or "").strip().upper()
-                    found = any((d_code and d_code == k[0]) or (d_name and d_name == k[1]) for k in existing_tmr)
-                    if not found:
-                        ws.insert_rows(sub_tmr_row, 1)
-                        new_r = sub_tmr_row
-                        ExcelWriter.copy_row_format(ws, new_r - 1, new_r, 25)
-                        ws.cell(new_r, 1).value = d.get("ma_khach", "")
-                        ws.cell(new_r, 2).value = sub_tmr_row - 9
-                        ws.cell(new_r, 3).value = d.get("ten_khach", "")
-                        ws.cell(new_r, 4).value = d.get("nhom", "")
-                        ws.cell(new_r, 5).value = "TMR"
-                        ws.cell(new_r, 6).value = f"=SUM(G{new_r}:X{new_r})"
-                        sub_tmr_row += 1
-                        existing_tmr[(d_code, d_name)] = new_r
-
-            # Tìm cột ngày tương ứng trong Mục 02 (từ Col 7 trở đi)
-            target_col = None
-            for c in range(7, ws.max_column + 1):
-                val = ws.cell(9, c).value
-                if val and day_header_short in str(val):
-                    target_col = c
-                    break
-
-            # Lập chỉ mục đại lý từ RuleManager để đồng bộ mã cho cả đại lý không phát sinh đơn
-            app_dealers = rule_manager.get_dealers("TMR", brand="TMR") if rule_manager else []
-            app_by_name = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
-            app_by_code = {str(d.get("ma_khach") or "").strip().upper(): d for d in app_dealers if d.get("ma_khach")}
-
-            muc01_by_code_th = {
-                (row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                for row in muc01_rows if row.get("ma_khach")
-            }
-            muc01_by_name_th = {
-                (row["ten_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                for row in muc01_rows
-            }
-
-            for r in range(10, sub_tmr_row):
-                code = str(ws.cell(r, 1).value or "").strip()
-                if code.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]:
-                    code = ""
-                name = str(ws.cell(r, 3).value or "").strip()
-                name_clean = name
-                name_norm = normalize_dealer_name(name)
-
-                rule_dealer = None
-                if code:
-                    rule_dealer = app_by_code.get(code.upper())
-                if not rule_dealer and name_norm:
-                    rule_dealer = app_by_name.get(name_norm)
-
-                if not code and rule_dealer and rule_dealer.get("ma_khach"):
-                    if "BẢO VIỆT" in name_clean.upper() and rule_dealer.get("ma_khach") == "CH9999":
-                        pass
-                    else:
-                        code = rule_dealer["ma_khach"]
-                        ws.cell(r, 1).value = code
-
-                if rule_dealer:
-                    if not ws.cell(r, 4).value and rule_dealer.get("nhom"):
-                        ws.cell(r, 4).value = rule_dealer["nhom"]
-                    ws.cell(r, 5).value = "TMR"
-
-                if target_col:
-                    matched_data = None
-                    if code:
-                        matched_data = muc01_by_code_th.get((code.upper(), "TMR"))
-                    if not matched_data and name_clean:
-                        matched_data = muc01_by_name_th.get((name_clean.upper(), "TMR"))
-
-                    if matched_data:
-                        ws.cell(r, target_col).value = matched_data["tong_m2"]
-                    else:
-                        ws.cell(r, target_col).value = None
-
-            # Subtotal row
-            if target_col:
-                ws.cell(sub_tmr_row, 1).value = "TỔNG (m²)"
-                ws.cell(sub_tmr_row, 6).value = f"=SUM(F10:F{sub_tmr_row - 1})"
-                cl_t = get_column_letter(target_col)
-                ws.cell(sub_tmr_row, target_col).value = f"=SUM({cl_t}10:{cl_t}{sub_tmr_row - 1})"
-
-        elif report_type == "TRM_TPS":
-            ws = ExcelWriter.get_target_sheet(wb, report_type, target_date)
-
-            # Kiểm tra nếu chưa có cột TH (tại cột 5)
-            if ws.cell(3, 5).value != "TH":
-                ws.insert_cols(5)
-                for r in range(1, 55):
-                    c4 = ws.cell(r, 4)
-                    c5 = ws.cell(r, 5)
-                    if c4.has_style:
-                        c5.font = copy(c4.font)
-                        c5.border = copy(c4.border)
-                        c5.fill = copy(c4.fill)
-                        c5.number_format = c4.number_format
-                        c5.alignment = Alignment(horizontal="center", vertical="center")
-
-            # 1. Headers Mục 01 (Dòng 3)
-            ws.cell(3, 1).value = "Mã khách hàng"
-            ws.cell(3, 2).value = "Stt"
-            ws.cell(3, 3).value = "CỬA HÀNG"
-            ws.cell(3, 4).value = "NHÓM"
-            ws.cell(3, 5).value = "TH"
-            ws.cell(3, 6).value = "TỔNG (m²)"
-            ws.cell(3, 7).value = "TỔNG (thùng)"
-
-            try:
-                if not isinstance(ws.cell(2, 15), openpyxl.cell.cell.MergedCell):
-                    ws.cell(2, 15).value = f" {day_str}"
-                elif not isinstance(ws.cell(2, 16), openpyxl.cell.cell.MergedCell):
-                    ws.cell(2, 16).value = f" {day_str}"
-            except Exception:
-                pass
-
-            col_map = {}
-            for c in range(8, ws.max_column + 1):
-                val = ws.cell(3, c).value
-                if val:
-                    col_map[str(val).replace('\n', ' ').strip()] = c
-
-            # 2. Mục 01: Dòng 4 đến 20
-            start_r = 4
-            end_r = 20
-            num_active = len(muc01_rows)
-            for i in range(end_r - start_r + 1):
-                curr_r = start_r + i
-                if i < num_active:
-                    cust_data = muc01_rows[i]
-                    ws.cell(curr_r, 1).value = cust_data.get("ma_khach", "")
-                    ws.cell(curr_r, 2).value = i + 1
-                    ws.cell(curr_r, 3).value = cust_data.get("ten_khach", "")
-                    ws.cell(curr_r, 4).value = cust_data.get("nhom", "")
-                    ws.cell(curr_r, 5).value = cust_data.get("thuong_hieu", "")
-
-                    # Công thức m2 và thùng
-                    ws.cell(curr_r, 6).value = f"=H{curr_r}*0.96+I{curr_r}*1.5+J{curr_r}+K{curr_r}*1.8+L{curr_r}*1.8+M{curr_r}*1.8+N{curr_r}*1.92+O{curr_r}*1.44+P{curr_r}*0.96+Q{curr_r}*1.92+R{curr_r}*1.8+S{curr_r}*1.5+T{curr_r}*1.8+U{curr_r}*1.8+V{curr_r}*1.92"
-                    ws.cell(curr_r, 7).value = f"=SUM(H{curr_r}:V{curr_r})"
-
-                    for c in range(8, ws.max_column + 1):
-                        ws.cell(curr_r, c).value = None
-
-                    for sp, qty in cust_data["specs"].items():
-                        c_idx = match_column(sp, col_map)
-                        if c_idx:
-                            ws.cell(curr_r, c_idx).value = qty
-
-                    ws.row_dimensions[curr_r].hidden = False
+        else:
+            # === FALLBACK CHO MẪU CŨ RIÊNG RẼ ===
+            if report_type == "TCR_TML":
+                if sheet_day_str in wb.sheetnames: ws = wb[sheet_day_str]
                 else:
-                    ws.cell(curr_r, 1).value = None
-                    ws.cell(curr_r, 2).value = None
-                    ws.cell(curr_r, 3).value = None
-                    ws.cell(curr_r, 4).value = None
-                    ws.cell(curr_r, 5).value = None
-                    ws.cell(curr_r, 6).value = f"=H{curr_r}*0.96+I{curr_r}*1.5+J{curr_r}+K{curr_r}*1.8+L{curr_r}*1.8+M{curr_r}*1.8+N{curr_r}*1.92+O{curr_r}*1.44+P{curr_r}*0.96+Q{curr_r}*1.92+R{curr_r}*1.8+S{curr_r}*1.5+T{curr_r}*1.8+U{curr_r}*1.8+V{curr_r}*1.92"
-                    ws.cell(curr_r, 7).value = f"=SUM(H{curr_r}:V{curr_r})"
-                    for c in range(8, ws.max_column + 1):
-                        ws.cell(curr_r, c).value = None
-
-                    ws.row_dimensions[curr_r].hidden = True
-
-            # 3. Dòng 21: TỔNG Mục 01
-            ws.row_dimensions[21].hidden = False
-            ws.cell(21, 2).value = "TỔNG"
-            ws.cell(21, 6).value = "=SUM(F4:F20)"
-            ws.cell(21, 7).value = "=SUM(G4:G20)"
-            for c in range(8, 23):
-                cl = get_column_letter(c)
-                ws.cell(21, c).value = f"=SUM({cl}4:{cl}20)"
-
-            # 4. Headers Mục 02 (Dòng 24)
-            ws.cell(24, 1).value = "Mã khách hàng"
-            ws.cell(24, 2).value = "Stt"
-            ws.cell(24, 3).value = "CỬA HÀNG"
-            ws.cell(24, 4).value = "NHÓM"
-            ws.cell(24, 5).value = "TH"
-            ws.cell(24, 6).value = "TỔNG"
-
-            # Dynamic Dealer Sync for TRM_TPS
-            sub_trm_row = None
-            sub_tps_row = None
-            for r in range(24, ws.max_row + 1):
-                for c in range(1, 5):
-                    v = str(ws.cell(r, c).value or "").upper()
-                    if "TỔNG TOROMA" in v and not sub_trm_row:
-                        sub_trm_row = r
-                    elif "TỔNG TOPISA" in v and not sub_tps_row:
-                        sub_tps_row = r
-
-            if not sub_trm_row:
-                sub_trm_row = 34
-            if not sub_tps_row:
-                sub_tps_row = 43
-
-            if rule_manager:
-                all_dealers = rule_manager.get_dealers("TRM_TPS")
-                trm_dealers = [d for d in all_dealers if d.get("thuong_hieu") == "TRM"]
-                tps_dealers = [d for d in all_dealers if d.get("thuong_hieu") == "TPS"]
-
-                # 1. Sync TRM dealers
-                existing_trm = {}
-                for r in range(25, sub_trm_row):
-                    code = str(ws.cell(r, 1).value or "").strip().upper()
-                    name = str(ws.cell(r, 3).value or "").strip().upper()
-                    if code or name:
-                        existing_trm[(code, name)] = r
-
-                for d in trm_dealers:
-                    d_code = str(d.get("ma_khach") or "").strip().upper()
-                    d_name = str(d.get("ten_khach") or "").strip().upper()
-                    found = any((d_code and d_code == k[0]) or (d_name and d_name == k[1]) for k in existing_trm)
-                    if not found:
-                        ws.insert_rows(sub_trm_row, 1)
-                        new_r = sub_trm_row
-                        ExcelWriter.copy_row_format(ws, new_r - 1, new_r, 22)
-                        ws.cell(new_r, 1).value = d.get("ma_khach", "")
-                        ws.cell(new_r, 2).value = sub_trm_row - 24
-                        ws.cell(new_r, 3).value = d.get("ten_khach", "")
-                        ws.cell(new_r, 4).value = d.get("nhom", "")
-                        ws.cell(new_r, 5).value = "TRM"
-                        ws.cell(new_r, 6).value = f"=SUM(G{new_r}:U{new_r})"
-                        sub_trm_row += 1
-                        sub_tps_row += 1
-                        existing_trm[(d_code, d_name)] = new_r
-
-                # 2. Sync TPS dealers
-                existing_tps = {}
-                tps_start_row = sub_trm_row + 2
-                for r in range(tps_start_row, sub_tps_row):
-                    code = str(ws.cell(r, 1).value or "").strip().upper()
-                    name = str(ws.cell(r, 3).value or "").strip().upper()
-                    if code or name:
-                        existing_tps[(code, name)] = r
-
-                for d in tps_dealers:
-                    d_code = str(d.get("ma_khach") or "").strip().upper()
-                    d_name = str(d.get("ten_khach") or "").strip().upper()
-                    found = any((d_code and d_code == k[0]) or (d_name and d_name == k[1]) for k in existing_tps)
-                    if not found:
-                        ws.insert_rows(sub_tps_row, 1)
-                        new_r = sub_tps_row
-                        ExcelWriter.copy_row_format(ws, new_r - 1, new_r, 22)
-                        ws.cell(new_r, 1).value = d.get("ma_khach", "")
-                        ws.cell(new_r, 2).value = sub_tps_row - tps_start_row + 1
-                        ws.cell(new_r, 3).value = d.get("ten_khach", "")
-                        ws.cell(new_r, 4).value = d.get("nhom", "")
-                        ws.cell(new_r, 5).value = "TPS"
-                        ws.cell(new_r, 6).value = f"=SUM(G{new_r}:U{new_r})"
-                        sub_tps_row += 1
-                        existing_tps[(d_code, d_name)] = new_r
-
-            # Cập nhật công thức dòng Mục 02
-            for r in range(25, sub_trm_row):
-                ws.cell(r, 5).value = "TRM"
-                ws.cell(r, 6).value = f"=SUM(G{r}:U{r})"
-
-            ws.cell(sub_trm_row, 6).value = f"=SUM(F25:F{sub_trm_row - 1})"
-            for c in range(7, 22):
-                cl = get_column_letter(c)
-                ws.cell(sub_trm_row, c).value = f"=SUM({cl}25:{cl}{sub_trm_row - 1})"
-
-            tps_start_row = sub_trm_row + 2
-            for r in range(tps_start_row, sub_tps_row):
-                ws.cell(r, 5).value = "TPS"
-                ws.cell(r, 6).value = f"=SUM(G{r}:U{r})"
-
-            ws.cell(sub_tps_row, 6).value = f"=SUM(F{tps_start_row}:F{sub_tps_row - 1})"
-            for c in range(7, 22):
-                cl = get_column_letter(c)
-                ws.cell(sub_tps_row, c).value = f"=SUM({cl}{tps_start_row}:{cl}{sub_tps_row - 1})"
-
-            row_day_total = sub_tps_row + 2
-            ws.cell(row_day_total, 6).value = f"=F{sub_trm_row}+F{sub_tps_row}"
-            for c in range(7, 22):
-                cl = get_column_letter(c)
-                ws.cell(row_day_total, c).value = f"={cl}{sub_trm_row}+{cl}{sub_tps_row}"
-
-            # Tìm cột ngày tương ứng trong Mục 02 (từ Col 7 trở đi)
-            target_col = None
-            for c in range(7, ws.max_column + 1):
-                val = ws.cell(24, c).value
-                if val and day_header_short in str(val):
-                    target_col = c
-                    break
-
-            # Lập chỉ mục đại lý từ RuleManager để đồng bộ mã cho cả đại lý không phát sinh đơn
-            app_dealers = rule_manager.get_dealers("TRM_TPS") if rule_manager else []
-            app_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "TRM")): d for d in app_dealers}
-            app_by_code_th = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "TRM")): d for d in app_dealers if d.get("ma_khach")}
-            app_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
-
-            muc01_by_code_th = {
-                (row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                for row in muc01_rows if row.get("ma_khach")
-            }
-            muc01_by_name_th = {
-                (row["ten_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                for row in muc01_rows
-            }
-
-            for r in range(25, sub_tps_row):
-                if r in [sub_trm_row, sub_trm_row + 1]:
-                    continue
-                name = ws.cell(r, 3).value
-                raw_code = ws.cell(r, 1).value
-                th = ws.cell(r, 5).value or ("TRM" if r < sub_trm_row else "TPS")
-                th = str(th).strip().upper()
-
-                code_clean = str(raw_code or "").strip()
-                if code_clean.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]:
-                    code_clean = ""
-
-                name_clean = str(name or "").strip()
-                name_norm = normalize_dealer_name(name_clean)
-
-                rule_dealer = None
-                if code_clean:
-                    rule_dealer = app_by_code_th.get((code_clean.upper(), th))
-                if not rule_dealer and name_norm:
-                    rule_dealer = app_by_name_th.get((name_norm, th))
-                if not rule_dealer and name_norm:
-                    rule_dealer = app_by_name_only.get(name_norm)
-
-                if not code_clean and rule_dealer and rule_dealer.get("ma_khach"):
-                    code_clean = rule_dealer["ma_khach"]
-                    ws.cell(r, 1).value = code_clean
-
-                if rule_dealer:
-                    if not ws.cell(r, 4).value and rule_dealer.get("nhom"):
-                        ws.cell(r, 4).value = rule_dealer["nhom"]
-                    ws.cell(r, 5).value = th
-
-                if target_col:
-                    matched_data = None
-                    if code_clean:
-                        matched_data = muc01_by_code_th.get((code_clean.upper(), th))
-                    if not matched_data and name_clean:
-                        matched_data = muc01_by_name_th.get((name_clean.upper(), th))
-
-                    if matched_data:
-                        ws.cell(r, target_col).value = matched_data["tong_m2"]
-                    else:
-                        ws.cell(r, target_col).value = None
+                    ws = wb.copy_worksheet(wb.active)
+                    ws.title = sheet_day_str
 
         # Ghi an toàn qua tệp tạm
         temp_dir = tempfile.gettempdir()

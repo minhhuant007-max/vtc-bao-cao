@@ -58,6 +58,7 @@ class ReportEngine:
         cust_aggregates: Dict[Tuple[str, str], Dict[str, float]] = {}
         cust_vouchers: Dict[Tuple[str, str], List[OrderRow]] = {}
         cust_info: Dict[Tuple[str, str], Any] = {}
+        cust_m2: Dict[Tuple[str, str], float] = {}
 
         # Load adjustments for this date if applied
         date_str = target_date.strftime("%Y-%m-%d") if target_date else "2026-11-12"
@@ -190,6 +191,26 @@ class ReportEngine:
                     })
                     continue
 
+            # Quy tắc nguồn 40x80 cấu hình động (GRANITE hoặc Đồng Nai):
+            if "40X80" in spec.upper():
+                rule_40x80_src = "GRANITE"
+                for sp_rule in self.rules.get_spec_rules(report_type):
+                    if "40X80" in sp_rule.get("name", "").upper():
+                        rule_40x80_src = sp_rule.get("source", "GRANITE")
+                        break
+                if rule_40x80_src == "GRANITE" and not is_granite_source(order.source_file):
+                    excluded_rows.append({
+                        "order": order,
+                        "reason": "Sai nguồn: 40×80 chỉ lấy từ GRANITE"
+                    })
+                    continue
+                elif rule_40x80_src == "DONG_NAI" and not is_dong_nai_source(order.source_file):
+                    excluded_rows.append({
+                        "order": order,
+                        "reason": "Sai nguồn: 40×80 chỉ lấy từ Đồng Nai"
+                    })
+                    continue
+
             # Check if this voucher is specifically adjusted out
             if apply_adjustments and order.so_ct in adj_by_voucher:
                 excluded_rows.append({"order": order, "reason": f"Điều chỉnh chứng từ đã xác nhận: {adj_by_voucher[order.so_ct].get('ly_do')}"})
@@ -207,6 +228,7 @@ class ReportEngine:
 
             cust_aggregates[key][spec] = cust_aggregates[key].get(spec, 0.0) + qty
             cust_vouchers[key].append(order)
+            cust_m2[key] = cust_m2.get(key, 0.0) + m2
 
             included_rows.append({
                 "order": order,
@@ -243,10 +265,9 @@ class ReportEngine:
                     row_m2 = 0.0
                     for sp, q in specs_dict.items():
                         fac = self.rules.get_factor(report_type, sp)
-                        row_m2 += q * fac
                         spec_totals[sp] = spec_totals.get(sp, 0.0) + q
 
-                    row_m2 = round(row_m2, 2)
+                    row_m2 = round(cust_m2.get(key, sum(q * self.rules.get_factor(report_type, sp) for sp, q in specs_dict.items())), 2)
                     tot_thung_report += row_thung
                     tot_m2_report += row_m2
 
@@ -271,10 +292,9 @@ class ReportEngine:
                     row_m2 = 0.0
                     for sp, q in specs_dict.items():
                         fac = self.rules.get_factor(report_type, sp)
-                        row_m2 += q * fac
                         spec_totals[sp] = spec_totals.get(sp, 0.0) + q
 
-                    row_m2 = round(row_m2, 2)
+                    row_m2 = round(cust_m2.get(key, sum(q * self.rules.get_factor(report_type, sp) for sp, q in specs_dict.items())), 2)
                     tot_thung_report += row_thung
                     tot_m2_report += row_m2
 
@@ -301,10 +321,9 @@ class ReportEngine:
                     row_m2 = 0.0
                     for sp, q in specs_dict.items():
                         fac = self.rules.get_factor(report_type, sp)
-                        row_m2 += q * fac
                         spec_totals[sp] = spec_totals.get(sp, 0.0) + q
 
-                    row_m2 = round(row_m2, 2)
+                    row_m2 = round(cust_m2.get(key, sum(q * self.rules.get_factor(report_type, sp) for sp, q in specs_dict.items())), 2)
                     tot_thung_report += row_thung
                     tot_m2_report += row_m2
 
@@ -329,10 +348,9 @@ class ReportEngine:
                     row_m2 = 0.0
                     for sp, q in specs_dict.items():
                         fac = self.rules.get_factor(report_type, sp)
-                        row_m2 += q * fac
                         spec_totals[sp] = spec_totals.get(sp, 0.0) + q
 
-                    row_m2 = round(row_m2, 2)
+                    row_m2 = round(cust_m2.get(key, sum(q * self.rules.get_factor(report_type, sp) for sp, q in specs_dict.items())), 2)
                     tot_thung_report += row_thung
                     tot_m2_report += row_m2
 
@@ -369,10 +387,9 @@ class ReportEngine:
                     row_m2 = 0.0
                     for sp, q in specs_dict.items():
                         fac = self.rules.get_factor(report_type, sp)
-                        row_m2 += q * fac
                         spec_totals[sp] = spec_totals.get(sp, 0.0) + q
 
-                    row_m2 = round(row_m2, 2)
+                    row_m2 = round(cust_m2.get(key, sum(q * self.rules.get_factor(report_type, sp) for sp, q in specs_dict.items())), 2)
                     tot_thung_report += row_thung
                     tot_m2_report += row_m2
 
@@ -399,10 +416,9 @@ class ReportEngine:
                     row_m2 = 0.0
                     for sp, q in specs_dict.items():
                         fac = self.rules.get_factor(report_type, sp)
-                        row_m2 += q * fac
                         spec_totals[sp] = spec_totals.get(sp, 0.0) + q
 
-                    row_m2 = round(row_m2, 2)
+                    row_m2 = round(cust_m2.get(key, sum(q * self.rules.get_factor(report_type, sp) for sp, q in specs_dict.items())), 2)
                     tot_thung_report += row_thung
                     tot_m2_report += row_m2
 
@@ -430,10 +446,9 @@ class ReportEngine:
                     row_m2 = 0.0
                     for sp, q in specs_dict.items():
                         fac = self.rules.get_factor(report_type, sp)
-                        row_m2 += q * fac
                         spec_totals[sp] = spec_totals.get(sp, 0.0) + q
 
-                    row_m2 = round(row_m2, 2)
+                    row_m2 = round(cust_m2.get(key, sum(q * self.rules.get_factor(report_type, sp) for sp, q in specs_dict.items())), 2)
                     tot_thung_report += row_thung
                     tot_m2_report += row_m2
 

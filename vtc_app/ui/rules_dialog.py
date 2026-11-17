@@ -168,22 +168,33 @@ class RulesDialog(QDialog):
             item_name.setFont(QFont("Segoe UI", 9, QFont.Bold))
             item_name.setFlags(item_name.flags() & ~Qt.ItemIsEditable)
 
-            # 2. Source Badge
-            if source == "DONG_NAI":
-                src_label = "Đồng Nai"
-                badge_color = QColor("#1a73e8")
-            elif source == "GRANITE":
-                src_label = "GRANIT"
-                badge_color = QColor("#e37400")
+            # 2. Source (Cho phép chỉnh Đồng Nai hoặc GRANITE cho 40x80)
+            if "40X80" in name.upper():
+                cbo_src = QComboBox()
+                cbo_src.addItems(["GRANITE", "Đồng Nai"])
+                if source == "DONG_NAI":
+                    cbo_src.setCurrentText("Đồng Nai")
+                else:
+                    cbo_src.setCurrentText("GRANITE")
+                cbo_src.setStyleSheet("font-weight: bold; color: #b05000; padding: 2px;")
+                self.table.setCellWidget(r, 2, cbo_src)
             else:
-                src_label = "Cả hai nguồn"
-                badge_color = QColor("#5f6368")
+                if source == "DONG_NAI":
+                    src_label = "Đồng Nai"
+                    badge_color = QColor("#1a73e8")
+                elif source == "GRANITE":
+                    src_label = "GRANIT"
+                    badge_color = QColor("#e37400")
+                else:
+                    src_label = "Cả hai nguồn"
+                    badge_color = QColor("#5f6368")
 
-            item_source = QTableWidgetItem(src_label)
-            item_source.setTextAlignment(Qt.AlignCenter)
-            item_source.setForeground(badge_color)
-            item_source.setFont(QFont("Segoe UI", 9, QFont.Bold))
-            item_source.setFlags(item_source.flags() & ~Qt.ItemIsEditable)
+                item_source = QTableWidgetItem(src_label)
+                item_source.setTextAlignment(Qt.AlignCenter)
+                item_source.setForeground(badge_color)
+                item_source.setFont(QFont("Segoe UI", 9, QFont.Bold))
+                item_source.setFlags(item_source.flags() & ~Qt.ItemIsEditable)
+                self.table.setItem(r, 2, item_source)
 
             # 3. Factor m² (editable)
             item_factor = QTableWidgetItem(str(factor))
@@ -194,7 +205,6 @@ class RulesDialog(QDialog):
 
             self.table.setItem(r, 0, item_stt)
             self.table.setItem(r, 1, item_name)
-            self.table.setItem(r, 2, item_source)
             self.table.setItem(r, 3, item_factor)
             self.table.setItem(r, 4, item_patterns)
 
@@ -287,19 +297,26 @@ class RulesDialog(QDialog):
 
             patterns = [p.strip().upper() for p in re.split(r"[,;\n]", pat_str) if p.strip()]
 
+            widget_src = self.table.cellWidget(r, 2)
+            src_val = None
+            if isinstance(widget_src, QComboBox):
+                src_val = "DONG_NAI" if "ĐỒNG NAI" in widget_src.currentText().upper() else "GRANITE"
+
             # Find in specs
             found = False
             for sp in specs:
                 if sp.get("name", "").strip().lower() == sp_name.lower():
                     sp["factor"] = fac
                     sp["patterns"] = patterns
+                    if src_val:
+                        sp["source"] = src_val
                     found = True
                     break
             if not found:
                 specs.append({
                     "name": sp_name,
                     "factor": fac,
-                    "source": "BOTH",
+                    "source": src_val or "BOTH",
                     "patterns": patterns
                 })
 

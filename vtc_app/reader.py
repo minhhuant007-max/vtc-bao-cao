@@ -182,8 +182,9 @@ class ExcelReader:
     ) -> List[TrackedCustomer]:
         """
         Đọc danh sách đại lý được theo dõi ở Mục 02 của mẫu đích.
-        Tự động nhận diện sheet theo ngày/tháng, cột Mã khách hàng, STT, Cửa hàng, Nhóm, Thương hiệu.
-        Hỗ trợ cả mẫu cũ (chưa có cột mã khách) và mẫu mới (đã có cột mã khách).
+        Hỗ trợ:
+        1. Mẫu Excel tổng hợp nhất mới (3 khối: TRM+TPS, TCR+TML, TMR) trong cùng 1 sheet.
+        2. Mẫu cũ (các tệp riêng rẽ).
         Đồng bộ tự động mã khách từ RuleManager (AppData) nếu cột mã khách trong Excel đang trống.
         """
         if not os.path.exists(template_path):
@@ -193,17 +194,11 @@ class ExcelReader:
         if sheet_name and sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
         else:
-            # Lấy sheet phù hợp nhất theo report_type và target_date
-            if report_type == "TCR_TML":
-                sheet_day = target_date.strftime("%d.%m.%Y") if target_date else None
-                if sheet_day and sheet_day in wb.sheetnames:
-                    ws = wb[sheet_day]
-                elif wb.sheetnames:
-                    ws = wb[wb.sheetnames[-1]] if "09." not in wb.sheetnames[-1] or len(wb.sheetnames) == 1 else wb.active
-                else:
-                    ws = wb.active
-
-            elif report_type == "TMR":
+            # Lấy sheet phù hợp nhất theo target_date hoặc sheet đầu tiên
+            sheet_day = target_date.strftime("%d.%m.%Y") if target_date else None
+            if sheet_day and sheet_day in wb.sheetnames:
+                ws = wb[sheet_day]
+            else:
                 month_code = target_date.strftime("T%m.%Y") if target_date else "T11.2026"
                 month_sub = target_date.strftime("%m.%Y") if target_date else "11.2026"
                 found_s = None
@@ -213,34 +208,88 @@ class ExcelReader:
                         break
                 if not found_s:
                     for s in wb.sheetnames:
-                        if "thang 11.2026" in s.lower() or "theo doi" in s.lower():
-                            found_s = s
-                            break
-                ws = wb[found_s] if found_s else wb.sheetnames[-1]
-
-            elif report_type == "TRM_TPS":
-                month_code = target_date.strftime("T%m.%Y") if target_date else "T11.2026"
-                found_s = None
-                for s in wb.sheetnames:
-                    if month_code in s:
-                        found_s = s
-                        break
-                if not found_s:
-                    for s in wb.sheetnames:
-                        if "BC NGAY" in s.upper():
+                        if "09.11.2026" in s or "BC NGAY" in s.upper() or "THEO DOI" in s.upper():
                             found_s = s
                             break
                 ws = wb[found_s] if found_s else wb.active
-            else:
-                ws = wb.active
 
         customers: List[TrackedCustomer] = []
 
         # Nạp dữ liệu tra cứu từ rule_manager nếu có
         app_dealers = rule_manager.get_dealers(report_type) if rule_manager else []
         app_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "").strip().upper()): d for d in app_dealers}
+        app_by_code_th = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "").strip().upper()): d for d in app_dealers if d.get("ma_khach")}
         app_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
 
+        # Phát hiện bố cục 3 khối chuẩn trong tệp Excel tổng hợp nhất
+        markers = {}
+        for r in range(1, min(ws.max_row + 1, 120)):
+            vals = [str(ws.cell(r, c).value or "").strip().upper() for c in range(1, 6)]
+            combined = " | ".join(vals)
+            if "TỔNG NHÓM TRM + TPS" in combined or "TỔNG NHÓM TRM+TPS" in combined:
+                markers["TRM_TPS_END"] = r
+            elif "TỔNG NHÓM TCR + TML" in combined or "TỔNG NHÓM TCR+TML" in combined:
+                markers["TCR_TML_END"] = r
+            elif "TỔNG NHÓM TMR" in combined:
+                markers["TMR_END"] = r
+
+        is_unified = bool(markers.get("TRM_TPS_END") and markers.get("TCR_TML_END"))
+
+        if is_unified:
+            # Bố cục chuẩn 3 khối:
+            # Block 1: TRM + TPS (Dòng 29 đến TRM_TPS_END - 1)
+            # Block 2: TCR + TML (Dòng TRM_TPS_END + 1 đến TCR_TML_END - 1)
+            # Block 3: TMR (Dòng TCR_TML_END + 1 đến TMR_END - 1)
+            if report_type == "TRM_TPS":
+                start_r = 29
+                end_r = markers["TRM_TPS_END"]
+                default_th = "TRM"
+            elif report_type == "TCR_TML":
+                start_r = markers["TRM_TPS_END"] + 1
+                end_r = markers["TCR_TML_END"]
+                default_th = "TCR"
+            else:  # TMR
+                start_r = markers["TCR_TML_END"] + 1
+                end_r = markers.get("TMR_END", ws.max_row)
+                default_th = "TMR"
+
+            for r in range(start_r, end_r):
+                raw_code = ws.cell(r, 1).value
+                stt_val = ws.cell(r, 2).value
+                name = ws.cell(r, 4).value
+                nhom = ws.cell(r, 5).value
+                th = ws.cell(r, 6).value or default_th
+
+                if name and str(name).strip() and "TỔNG" not in str(name).upper():
+                    name_clean = str(name).strip()
+                    name_norm = normalize_dealer_name(name_clean)
+                    th_clean = str(th).strip().upper()
+                    code = str(raw_code).strip().upper() if raw_code and str(raw_code).strip() != "None" else ""
+
+                    # Tra từ rule_manager nếu code rỗng
+                    if not code:
+                        matched_rule = app_by_name_th.get((name_norm, th_clean)) or app_by_name_only.get(name_norm)
+                        if matched_rule and matched_rule.get("ma_khach"):
+                            code = matched_rule["ma_khach"].strip().upper()
+
+                    try:
+                        stt = int(stt_val)
+                    except (ValueError, TypeError):
+                        stt = len(customers) + 1
+
+                    customers.append(TrackedCustomer(
+                        ma_khach=code,
+                        stt=stt,
+                        ten_khach=name_clean,
+                        nhom=str(nhom).strip().upper() if nhom else "VIP",
+                        thuong_hieu=th_clean,
+                        row_idx_muc02=r,
+                        col_idx_ma_khach=1
+                    ))
+            wb.close()
+            return customers
+
+        # Fallback cho mẫu cũ riêng rẽ (tương thích ngược)
         if report_type == "TCR_TML":
             # Header ở dòng 27: [None, 'STT', None, 'CỬA HÀNG', 'NHÓM', 'TH', ...] hoặc ['Mã khách hàng', ...]
             has_code_col = (str(ws.cell(27, 1).value or "").strip().upper() in ["MÃ KHÁCH HÀNG", "MÃ KH"])
