@@ -5,6 +5,7 @@ import openpyxl
 
 from .models import OrderRow, TrackedCustomer, DiscrepancyRecord
 from .rules import RuleManager
+from .reader import normalize_dealer_name
 
 def is_dong_nai_source(source_file: str) -> bool:
     s = os.path.basename(source_file).upper()
@@ -33,8 +34,9 @@ class ReportEngine:
         - Số theo nguồn luôn phản ánh đúng các đơn hàng từ file nguồn (4.552 thùng đối với TRM+TPS).
         - Nếu bật điều chỉnh (apply_adjustments=True), áp dụng các điều chỉnh đã xác nhận (trừ 144 thùng BT.26-00845 và 203 thùng BA.26-00249) cho ra số sau điều chỉnh là 4.205 thùng.
         """
-        # Map tracked customers by code (chỉ lấy đại lý đang theo dõi)
+        # Map tracked customers by code and name (chỉ lấy đại lý đang theo dõi)
         cust_by_code: Dict[str, List[TrackedCustomer]] = {}
+        cust_by_name: Dict[str, List[TrackedCustomer]] = {}
         for c in tracked_customers:
             if not getattr(c, "is_active", True):
                 continue
@@ -43,6 +45,11 @@ class ReportEngine:
                 if code not in cust_by_code:
                     cust_by_code[code] = []
                 cust_by_code[code].append(c)
+            name_norm = normalize_dealer_name(c.ten_khach)
+            if name_norm:
+                if name_norm not in cust_by_name:
+                    cust_by_name[name_norm] = []
+                cust_by_name[name_norm].append(c)
 
         included_rows: List[Dict[str, Any]] = []
         excluded_rows: List[Dict[str, Any]] = []
@@ -86,6 +93,8 @@ class ReportEngine:
 
             # 4. Tracked customer check (Mục 02)
             matched_custs = cust_by_code.get(code, [])
+            if not matched_custs and order.ten_khach:
+                matched_custs = cust_by_name.get(normalize_dealer_name(order.ten_khach), [])
             if not matched_custs:
                 excluded_rows.append({"order": order, "reason": f"Mã khách '{code}' ({order.ten_khach}) không nằm trong Mục 02"})
                 continue

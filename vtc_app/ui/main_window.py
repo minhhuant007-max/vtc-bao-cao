@@ -15,7 +15,7 @@ from PySide6.QtGui import QFont, QColor, QIcon
 
 from ..models import OrderRow, TrackedCustomer, DiscrepancyRecord
 from ..rules import RuleManager
-from ..reader import ExcelReader
+from ..reader import ExcelReader, normalize_dealer_name
 from ..engine import ReportEngine
 from ..writer import ExcelWriter
 from .rules_dialog import RulesDialog
@@ -489,15 +489,38 @@ class MainWindow(QMainWindow):
             dealer_active_map[(code, th)] = d.get("is_active", True)
             dealer_active_map[(name, th)] = d.get("is_active", True)
 
-        tracked_custs = ExcelReader.read_tracked_customers(template_path, self.current_report)
+        tracked_custs = ExcelReader.read_tracked_customers(
+            template_path, self.current_report, target_date=target_date, rule_manager=self.rules
+        )
+        dealers_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "").strip().upper()): d for d in dealers}
+        dealers_by_code_th = {(d.get("ma_khach", "").strip().upper(), d.get("thuong_hieu", "").strip().upper()): d for d in dealers if d.get("ma_khach")}
+        dealers_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in dealers}
+
         for c in tracked_custs:
             code = c.ma_khach.strip().upper()
             th = c.thuong_hieu.strip().upper()
-            name = c.ten_khach.strip().upper()
-            if (code, th) in dealer_active_map:
+            name_norm = normalize_dealer_name(c.ten_khach)
+
+            d = None
+            if code:
+                d = dealers_by_code_th.get((code, th))
+            if not d and name_norm:
+                d = dealers_by_name_th.get((name_norm, th))
+            if not d and name_norm:
+                d = dealers_by_name_only.get(name_norm)
+
+            if d:
+                if not c.ma_khach and d.get("ma_khach"):
+                    c.ma_khach = d["ma_khach"]
+                if not c.nhom and d.get("nhom"):
+                    c.nhom = d["nhom"]
+                c.is_active = d.get("is_active", True)
+            elif (code, th) in dealer_active_map:
                 c.is_active = dealer_active_map[(code, th)]
-            elif (name, th) in dealer_active_map:
-                c.is_active = dealer_active_map[(name, th)]
+            elif (c.ten_khach.strip().upper(), th) in dealer_active_map:
+                c.is_active = dealer_active_map[(c.ten_khach.strip().upper(), th)]
+            else:
+                c.is_active = True
 
         existing_keys = {(c.ma_khach.strip().upper(), c.thuong_hieu.strip().upper()) for c in tracked_custs if c.ma_khach}
         existing_names = {(c.ten_khach.strip().upper(), c.thuong_hieu.strip().upper()) for c in tracked_custs}

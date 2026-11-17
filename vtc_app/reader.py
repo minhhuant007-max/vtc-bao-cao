@@ -2,8 +2,17 @@ import openpyxl
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional, Tuple
 import os
+import re
 
 from .models import OrderRow, TrackedCustomer
+
+def normalize_dealer_name(s: str) -> str:
+    """Chuẩn hóa tên đại lý để so khớp chính xác: loại bỏ khoảng trắng kép, chuẩn hóa dấu gạch ngang."""
+    if not s:
+        return ""
+    s = re.sub(r'\s+', ' ', str(s)).strip().upper()
+    s = s.replace(' - ', '-').replace('- ', '-').replace(' -', '-')
+    return s
 
 # Mapping mã khách hàng mặc định (mã thực tế được nạp động từ cấu hình Quản lý đại lý tại %APPDATA%):
 KNOWN_CUSTOMER_CODES = {}
@@ -164,10 +173,18 @@ class ExcelReader:
         return sorted(list(dates))
 
     @staticmethod
-    def read_tracked_customers(template_path: str, report_type: str, sheet_name: Optional[str] = None) -> List[TrackedCustomer]:
+    def read_tracked_customers(
+        template_path: str,
+        report_type: str,
+        sheet_name: Optional[str] = None,
+        target_date: Optional[date] = None,
+        rule_manager: Optional[Any] = None
+    ) -> List[TrackedCustomer]:
         """
         Đọc danh sách đại lý được theo dõi ở Mục 02 của mẫu đích.
-        Tự động nhận diện cột Mã khách hàng, STT, Cửa hàng, Nhóm, Thương hiệu.
+        Tự động nhận diện sheet theo ngày/tháng, cột Mã khách hàng, STT, Cửa hàng, Nhóm, Thương hiệu.
+        Hỗ trợ cả mẫu cũ (chưa có cột mã khách) và mẫu mới (đã có cột mã khách).
+        Đồng bộ tự động mã khách từ RuleManager (AppData) nếu cột mã khách trong Excel đang trống.
         """
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Không tìm thấy mẫu đích: {template_path}")
@@ -176,59 +193,132 @@ class ExcelReader:
         if sheet_name and sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
         else:
-            # Lấy sheet phù hợp nhất
+            # Lấy sheet phù hợp nhất theo report_type và target_date
             if report_type == "TCR_TML":
-                ws = wb.active
+                sheet_day = target_date.strftime("%d.%m.%Y") if target_date else None
+                if sheet_day and sheet_day in wb.sheetnames:
+                    ws = wb[sheet_day]
+                elif wb.sheetnames:
+                    ws = wb[wb.sheetnames[-1]] if "09." not in wb.sheetnames[-1] or len(wb.sheetnames) == 1 else wb.active
+                else:
+                    ws = wb.active
+
             elif report_type == "TMR":
-                # Thường là thang 11.2026 hoặc sheet cuối
-                ws = wb["thang 11.2026"] if "thang 11.2026" in wb.sheetnames else wb.active
+                month_code = target_date.strftime("T%m.%Y") if target_date else "T11.2026"
+                month_sub = target_date.strftime("%m.%Y") if target_date else "11.2026"
+                found_s = None
+                for s in wb.sheetnames:
+                    if month_code.lower() in s.lower() or month_sub in s:
+                        found_s = s
+                        break
+                if not found_s:
+                    for s in wb.sheetnames:
+                        if "thang 11.2026" in s.lower() or "theo doi" in s.lower():
+                            found_s = s
+                            break
+                ws = wb[found_s] if found_s else wb.sheetnames[-1]
+
             elif report_type == "TRM_TPS":
-                ws = wb["BC NGAY T11.2026"] if "BC NGAY T11.2026" in wb.sheetnames else wb.active
+                month_code = target_date.strftime("T%m.%Y") if target_date else "T11.2026"
+                found_s = None
+                for s in wb.sheetnames:
+                    if month_code in s:
+                        found_s = s
+                        break
+                if not found_s:
+                    for s in wb.sheetnames:
+                        if "BC NGAY" in s.upper():
+                            found_s = s
+                            break
+                ws = wb[found_s] if found_s else wb.active
             else:
                 ws = wb.active
 
         customers: List[TrackedCustomer] = []
 
+        # Nạp dữ liệu tra cứu từ rule_manager nếu có
+        app_dealers = rule_manager.get_dealers(report_type) if rule_manager else []
+        app_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "").strip().upper()): d for d in app_dealers}
+        app_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
+
         if report_type == "TCR_TML":
-            # Mục 02 từ dòng 29 đến dòng 51
-            # Header ở dòng 27: [None, 'STT', None, 'CỬA HÀNG', 'NHÓM', 'TH', ...]
-            for r in range(29, min(52, ws.max_row + 1)):
-                name = ws.cell(r, 4).value
-                nhom = ws.cell(r, 5).value
-                th = ws.cell(r, 6).value
-                stt_val = ws.cell(r, 2).value or ws.cell(r, 3).value
-                raw_code = ws.cell(r, 1).value
-                if name and nhom and th and str(name).strip():
+            # Header ở dòng 27: [None, 'STT', None, 'CỬA HÀNG', 'NHÓM', 'TH', ...] hoặc ['Mã khách hàng', ...]
+            has_code_col = (str(ws.cell(27, 1).value or "").strip().upper() in ["MÃ KHÁCH HÀNG", "MÃ KH"])
+            col_code = 1
+            col_stt = 2
+            col_name = 4
+            col_nhom = 5
+            col_th = 6
+
+            for r in range(29, min(55, ws.max_row + 1)):
+                name = ws.cell(r, col_name).value
+                nhom = ws.cell(r, col_nhom).value
+                th = ws.cell(r, col_th).value
+                stt_val = ws.cell(r, col_stt).value or ws.cell(r, 3).value
+                raw_code = ws.cell(r, col_code).value if has_code_col else None
+
+                if name and nhom and th and str(name).strip() and "TỔNG" not in str(name).upper():
                     name_clean = str(name).strip()
-                    code = str(raw_code).strip().upper() if raw_code else KNOWN_CUSTOMER_CODES.get(name_clean, "")
+                    name_norm = normalize_dealer_name(name_clean)
+                    th_clean = str(th).strip().upper()
+                    code = str(raw_code).strip().upper() if raw_code and str(raw_code).strip() != "None" else ""
+
+                    # Tra từ rule_manager nếu code rỗng
+                    if not code:
+                        matched_rule = app_by_name_th.get((name_norm, th_clean)) or app_by_name_only.get(name_norm)
+                        if matched_rule and matched_rule.get("ma_khach"):
+                            code = matched_rule["ma_khach"].strip().upper()
+
                     try:
                         stt = int(stt_val)
                     except (ValueError, TypeError):
                         stt = len(customers) + 1
+
                     customers.append(TrackedCustomer(
                         ma_khach=code,
                         stt=stt,
                         ten_khach=name_clean,
                         nhom=str(nhom).strip().upper(),
-                        thuong_hieu=str(th).strip().upper(),
+                        thuong_hieu=th_clean,
                         row_idx_muc02=r,
                         col_idx_ma_khach=1
                     ))
 
         elif report_type == "TMR":
-            # Mục 02 từ dòng 10 đến dòng 12
-            # Dòng 9: ['STT', 'CỬA HÀNG', 'NHÓM', 'TỔNG', ...]
-            for r in range(10, min(20, ws.max_row + 1)):
-                name = ws.cell(r, 2).value
-                nhom = ws.cell(r, 3).value
-                stt_val = ws.cell(r, 1).value
-                if name and nhom and str(name).strip():
+            # Header ở dòng 9 hoặc dòng 3
+            # Mẫu có cột mã khách: Cột 1 là Mã khách hàng, Cột 2 là STT, Cột 3 là CỬA HÀNG, Cột 4 là NHÓM
+            # Mẫu cũ (chưa có cột mã khách): Cột 1 là STT, Cột 2 là CỬA HÀNG, Cột 3 là NHÓM
+            has_code_col = (
+                str(ws.cell(9, 1).value or "").strip().upper() in ["MÃ KHÁCH HÀNG", "MÃ KH"]
+                or str(ws.cell(3, 1).value or "").strip().upper() in ["MÃ KHÁCH HÀNG", "MÃ KH"]
+            )
+            col_code = 1 if has_code_col else None
+            col_stt = 2 if has_code_col else 1
+            col_name = 3 if has_code_col else 2
+            col_nhom = 4 if has_code_col else 3
+
+            for r in range(10, min(25, ws.max_row + 1)):
+                name = ws.cell(r, col_name).value
+                nhom = ws.cell(r, col_nhom).value
+                stt_val = ws.cell(r, col_stt).value
+                raw_code = ws.cell(r, col_code).value if col_code else None
+
+                if name and nhom and str(name).strip() and "TỔNG" not in str(name).upper():
                     name_clean = str(name).strip()
-                    code = KNOWN_CUSTOMER_CODES.get(name_clean, "")
+                    name_norm = normalize_dealer_name(name_clean)
+                    code = str(raw_code).strip().upper() if raw_code and str(raw_code).strip() != "None" else ""
+
+                    # Tra từ rule_manager nếu code rỗng
+                    if not code:
+                        matched_rule = app_by_name_th.get((name_norm, "TMR")) or app_by_name_only.get(name_norm)
+                        if matched_rule and matched_rule.get("ma_khach"):
+                            code = matched_rule["ma_khach"].strip().upper()
+
                     try:
                         stt = int(stt_val)
                     except (ValueError, TypeError):
                         stt = len(customers) + 1
+
                     customers.append(TrackedCustomer(
                         ma_khach=code,
                         stt=stt,
@@ -240,12 +330,9 @@ class ExcelReader:
                     ))
 
         elif report_type == "TRM_TPS":
-            # Mục 02 từ dòng 25 đến dòng 42
-            # Dòng 24: ['Mã khách hàng', 'Stt', 'CỬA HÀNG', 'NHÓM', 'TH', 'TỔNG', ...] hoặc ['Mã khách hàng', 'Stt', 'CỬA HÀNG', 'NHÓM', 'TỔNG', ...]
-            # Dòng 25-33: TOROMA (TRM)
-            # Dòng 36-42: TOPISA (TPS)
+            # Dòng 24: ['Mã khách hàng', 'Stt', 'CỬA HÀNG', 'NHÓM', 'TH', 'TỔNG', ...]
             current_th = "TRM"
-            for r in range(25, min(45, ws.max_row + 1)):
+            for r in range(25, min(48, ws.max_row + 1)):
                 raw_code = ws.cell(r, 1).value
                 stt_val = ws.cell(r, 2).value
                 name = ws.cell(r, 3).value
@@ -258,17 +345,25 @@ class ExcelReader:
                 else:
                     current_th = "TRM"
 
-                # Nếu cột 5 là TH đã điền TRM / TPS
                 if th_val and str(th_val).strip().upper() in ["TRM", "TPS"]:
                     current_th = str(th_val).strip().upper()
 
-                if name and nhom and str(name).strip():
+                if name and nhom and str(name).strip() and "TỔNG" not in str(name).upper():
                     name_clean = str(name).strip()
-                    code = str(raw_code).strip().upper() if raw_code and str(raw_code).strip() != "None" else KNOWN_CUSTOMER_CODES.get(name_clean, "")
+                    name_norm = normalize_dealer_name(name_clean)
+                    code = str(raw_code).strip().upper() if raw_code and str(raw_code).strip() != "None" else ""
+
+                    # Tra từ rule_manager nếu code rỗng
+                    if not code:
+                        matched_rule = app_by_name_th.get((name_norm, current_th)) or app_by_name_only.get(name_norm)
+                        if matched_rule and matched_rule.get("ma_khach"):
+                            code = matched_rule["ma_khach"].strip().upper()
+
                     try:
                         stt = int(stt_val)
                     except (ValueError, TypeError):
                         stt = len(customers) + 1
+
                     customers.append(TrackedCustomer(
                         ma_khach=code,
                         stt=stt,
