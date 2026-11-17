@@ -84,10 +84,55 @@ class ExcelWriter:
                 dc.alignment = copy(sc.alignment)
 
     @staticmethod
+    def get_target_sheet(wb, report_type: str, target_date: Optional[date] = None):
+        """
+        Xác định chính xác sheet đích cần xử lý theo loại báo cáo và ngày/tháng,
+        không phụ thuộc vào wb.active (vốn có thể trỏ sai sheet nếu người dùng đã lưu sheet khác trước đó).
+        """
+        if report_type == "TCR_TML":
+            if target_date:
+                sheet_day_str = target_date.strftime("%d.%m.%Y")
+                if sheet_day_str in wb.sheetnames:
+                    return wb[sheet_day_str]
+            return wb.active
+
+        elif report_type == "TMR":
+            if target_date:
+                month_code = target_date.strftime("T%m.%Y")
+                month_sub = target_date.strftime("%m.%Y")
+                for s in wb.sheetnames:
+                    if month_code.lower() in s.lower() or month_sub in s:
+                        return wb[s]
+            for s in wb.sheetnames:
+                if "THEO DOI" in s.upper():
+                    return wb[s]
+            return wb.sheetnames[-1]
+
+        elif report_type == "TRM_TPS":
+            if target_date:
+                month_code = target_date.strftime("T%m.%Y")
+                m_num = f"T{target_date.month}"
+                for s in wb.sheetnames:
+                    if month_code in s:
+                        return wb[s]
+                for s in wb.sheetnames:
+                    if m_num in s and "BC NGAY" in s.upper():
+                        return wb[s]
+                for s in wb.sheetnames:
+                    if m_num in s:
+                        return wb[s]
+            for s in wb.sheetnames:
+                if "BC NGAY" in s.upper():
+                    return wb[s]
+            return wb.active
+        return wb.active
+
+    @staticmethod
     def analyze_master_excel_dealers(
         template_path: str,
         report_type: str,
-        rule_manager: Any
+        rule_manager: Any,
+        target_date: Optional[date] = None
     ) -> List[Dict[str, Any]]:
         """
         Phân tích đối chiếu Mục 02 của tệp Excel tổng với danh sách đại lý đã xác minh trong AppData.
@@ -101,7 +146,7 @@ class ExcelWriter:
             return []
 
         wb = openpyxl.load_workbook(template_path, data_only=True)
-        ws = wb.active
+        ws = ExcelWriter.get_target_sheet(wb, report_type, target_date)
         items = []
 
         if report_type == "TCR_TML":
@@ -352,7 +397,8 @@ class ExcelWriter:
     def apply_confirmed_sync_to_sheet(
         template_path: str,
         report_type: str,
-        confirmed_items: List[Dict[str, Any]]
+        confirmed_items: List[Dict[str, Any]],
+        target_date: Optional[date] = None
     ):
         """
         Áp dụng các mã khách hàng và phân nhóm đã được người dùng xác nhận vào Mục 02 của Excel tổng.
@@ -362,7 +408,7 @@ class ExcelWriter:
             return
 
         wb = openpyxl.load_workbook(template_path, data_only=False)
-        ws = wb.active
+        ws = ExcelWriter.get_target_sheet(wb, report_type, target_date)
 
         if report_type == "TCR_TML":
             ws.cell(27, 1).value = "Mã khách hàng"
@@ -625,37 +671,62 @@ class ExcelWriter:
                     target_col = c
                     break
 
-            if target_col:
-                muc01_by_code_th = {
-                    (row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                    for row in muc01_rows if row.get("ma_khach")
-                }
-                muc01_by_name_th = {
-                    (row["ten_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                    for row in muc01_rows
-                }
+            # Lập chỉ mục đại lý từ RuleManager để đồng bộ mã cho cả đại lý không phát sinh đơn
+            app_dealers = rule_manager.get_dealers("TCR_TML") if rule_manager else []
+            app_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "TCR")): d for d in app_dealers}
+            app_by_code_th = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "TCR")): d for d in app_dealers if d.get("ma_khach")}
+            app_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
 
-                # Cập nhật Mục 02 cho TCR và TML
-                for r in range(29, sub_tml_row):
-                    if r == sub_tcr_row:
-                        continue
-                    name = ws.cell(r, 4).value
-                    raw_code = ws.cell(r, 1).value
-                    th = ws.cell(r, 6).value or ("TCR" if r < sub_tcr_row else "TML")
-                    th = str(th).strip().upper()
+            muc01_by_code_th = {
+                (row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
+                for row in muc01_rows if row.get("ma_khach")
+            }
+            muc01_by_name_th = {
+                (row["ten_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
+                for row in muc01_rows
+            }
 
+            # Cập nhật Mục 02 cho TCR và TML (đồng bộ mã đại lý kể cả không phát sinh đơn)
+            for r in range(29, sub_tml_row):
+                if r == sub_tcr_row:
+                    continue
+                name = ws.cell(r, 4).value
+                raw_code = ws.cell(r, 1).value
+                th = ws.cell(r, 6).value or ("TCR" if r < sub_tcr_row else "TML")
+                th = str(th).strip().upper()
+
+                code_clean = str(raw_code or "").strip()
+                if code_clean.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]:
+                    code_clean = ""
+
+                name_clean = str(name or "").strip()
+                name_norm = normalize_dealer_name(name_clean)
+
+                rule_dealer = None
+                if code_clean:
+                    rule_dealer = app_by_code_th.get((code_clean.upper(), th))
+                if not rule_dealer and name_norm:
+                    rule_dealer = app_by_name_th.get((name_norm, th))
+                if not rule_dealer and name_norm:
+                    rule_dealer = app_by_name_only.get(name_norm)
+
+                if not code_clean and rule_dealer and rule_dealer.get("ma_khach"):
+                    code_clean = rule_dealer["ma_khach"]
+                    ws.cell(r, 1).value = code_clean
+
+                if rule_dealer:
+                    if not ws.cell(r, 5).value and rule_dealer.get("nhom"):
+                        ws.cell(r, 5).value = rule_dealer["nhom"]
+                    ws.cell(r, 6).value = th
+
+                if target_col:
                     matched_data = None
-                    if raw_code and str(raw_code).strip() != "None":
-                        code_clean = str(raw_code).strip().upper()
-                        matched_data = muc01_by_code_th.get((code_clean, th))
-
-                    if not matched_data and name:
-                        name_clean = str(name).strip().upper()
-                        matched_data = muc01_by_name_th.get((name_clean, th))
+                    if code_clean:
+                        matched_data = muc01_by_code_th.get((code_clean.upper(), th))
+                    if not matched_data and name_clean:
+                        matched_data = muc01_by_name_th.get((name_clean.upper(), th))
 
                     if matched_data:
-                        if not raw_code or str(raw_code).strip() == "None":
-                            ws.cell(r, 1).value = matched_data.get("ma_khach", "")
                         ws.cell(r, target_col).value = matched_data["tong_m2"]
                     else:
                         ws.cell(r, target_col).value = None
@@ -671,15 +742,7 @@ class ExcelWriter:
                 ws.cell(row_tot_m2, target_col).value = f"=SUM({cl_t}{sub_tcr_row},{cl_t}{sub_tml_row})"
 
         elif report_type == "TMR":
-            sheet_title = None
-            for s in wb.sheetnames:
-                if month_code.lower() in s.lower() or target_date.strftime("%m.%Y") in s:
-                    sheet_title = s
-                    break
-            if not sheet_title:
-                sheet_title = wb.sheetnames[-1]
-
-            ws = wb[sheet_title]
+            ws = ExcelWriter.get_target_sheet(wb, report_type, target_date)
 
             # Kiểm tra nếu chưa có cột Mã khách hàng tại cột 1
             if ws.cell(3, 1).value != "Mã khách hàng":
@@ -818,47 +881,67 @@ class ExcelWriter:
                     target_col = c
                     break
 
-            if target_col:
-                muc01_by_code_th = {
-                    (row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                    for row in muc01_rows if row.get("ma_khach")
-                }
-                muc01_by_name_th = {
-                    (row["ten_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                    for row in muc01_rows
-                }
+            # Lập chỉ mục đại lý từ RuleManager để đồng bộ mã cho cả đại lý không phát sinh đơn
+            app_dealers = rule_manager.get_dealers("TMR", brand="TMR") if rule_manager else []
+            app_by_name = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
+            app_by_code = {str(d.get("ma_khach") or "").strip().upper(): d for d in app_dealers if d.get("ma_khach")}
 
-                for r in range(10, sub_tmr_row):
-                    code = str(ws.cell(r, 1).value or "").strip().upper()
-                    name = str(ws.cell(r, 3).value or "").strip().upper()
+            muc01_by_code_th = {
+                (row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
+                for row in muc01_rows if row.get("ma_khach")
+            }
+            muc01_by_name_th = {
+                (row["ten_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
+                for row in muc01_rows
+            }
 
+            for r in range(10, sub_tmr_row):
+                code = str(ws.cell(r, 1).value or "").strip()
+                if code.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]:
+                    code = ""
+                name = str(ws.cell(r, 3).value or "").strip()
+                name_clean = name
+                name_norm = normalize_dealer_name(name)
+
+                rule_dealer = None
+                if code:
+                    rule_dealer = app_by_code.get(code.upper())
+                if not rule_dealer and name_norm:
+                    rule_dealer = app_by_name.get(name_norm)
+
+                if not code and rule_dealer and rule_dealer.get("ma_khach"):
+                    if "BẢO VIỆT" in name_clean.upper() and rule_dealer.get("ma_khach") == "CH9999":
+                        pass
+                    else:
+                        code = rule_dealer["ma_khach"]
+                        ws.cell(r, 1).value = code
+
+                if rule_dealer:
+                    if not ws.cell(r, 4).value and rule_dealer.get("nhom"):
+                        ws.cell(r, 4).value = rule_dealer["nhom"]
+                    ws.cell(r, 5).value = "TMR"
+
+                if target_col:
                     matched_data = None
                     if code:
-                        matched_data = muc01_by_code_th.get((code, "TMR"))
-                    if not matched_data and name:
-                        matched_data = muc01_by_name_th.get((name, "TMR"))
+                        matched_data = muc01_by_code_th.get((code.upper(), "TMR"))
+                    if not matched_data and name_clean:
+                        matched_data = muc01_by_name_th.get((name_clean.upper(), "TMR"))
 
                     if matched_data:
                         ws.cell(r, target_col).value = matched_data["tong_m2"]
                     else:
                         ws.cell(r, target_col).value = None
 
-                # Subtotal row
+            # Subtotal row
+            if target_col:
                 ws.cell(sub_tmr_row, 1).value = "TỔNG (m²)"
                 ws.cell(sub_tmr_row, 6).value = f"=SUM(F10:F{sub_tmr_row - 1})"
                 cl_t = get_column_letter(target_col)
                 ws.cell(sub_tmr_row, target_col).value = f"=SUM({cl_t}10:{cl_t}{sub_tmr_row - 1})"
 
         elif report_type == "TRM_TPS":
-            sheet_title = None
-            for s in wb.sheetnames:
-                if month_code in s or f"T{target_date.month}" in s:
-                    sheet_title = s
-                    break
-            if not sheet_title:
-                sheet_title = wb.sheetnames[0]
-
-            ws = wb[sheet_title]
+            ws = ExcelWriter.get_target_sheet(wb, report_type, target_date)
 
             # Kiểm tra nếu chưa có cột TH (tại cột 5)
             if ws.cell(3, 5).value != "TH":
@@ -1060,36 +1143,61 @@ class ExcelWriter:
                     target_col = c
                     break
 
-            if target_col:
-                muc01_by_code_th = {
-                    (row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                    for row in muc01_rows if row.get("ma_khach")
-                }
-                muc01_by_name_th = {
-                    (row["ten_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
-                    for row in muc01_rows
-                }
+            # Lập chỉ mục đại lý từ RuleManager để đồng bộ mã cho cả đại lý không phát sinh đơn
+            app_dealers = rule_manager.get_dealers("TRM_TPS") if rule_manager else []
+            app_by_name_th = {(normalize_dealer_name(d.get("ten_khach", "")), d.get("thuong_hieu", "TRM")): d for d in app_dealers}
+            app_by_code_th = {(str(d.get("ma_khach") or "").strip().upper(), d.get("thuong_hieu", "TRM")): d for d in app_dealers if d.get("ma_khach")}
+            app_by_name_only = {normalize_dealer_name(d.get("ten_khach", "")): d for d in app_dealers}
 
-                for r in range(25, sub_tps_row):
-                    if r in [sub_trm_row, sub_trm_row + 1]:
-                        continue
-                    name = ws.cell(r, 3).value
-                    raw_code = ws.cell(r, 1).value
-                    th = ws.cell(r, 5).value or ("TRM" if r < sub_trm_row else "TPS")
-                    th = str(th).strip().upper()
+            muc01_by_code_th = {
+                (row["ma_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
+                for row in muc01_rows if row.get("ma_khach")
+            }
+            muc01_by_name_th = {
+                (row["ten_khach"].strip().upper(), row["thuong_hieu"].strip().upper()): row
+                for row in muc01_rows
+            }
 
+            for r in range(25, sub_tps_row):
+                if r in [sub_trm_row, sub_trm_row + 1]:
+                    continue
+                name = ws.cell(r, 3).value
+                raw_code = ws.cell(r, 1).value
+                th = ws.cell(r, 5).value or ("TRM" if r < sub_trm_row else "TPS")
+                th = str(th).strip().upper()
+
+                code_clean = str(raw_code or "").strip()
+                if code_clean.upper() in ["NONE", "MÃ KHÁCH HÀNG", "MÃ KH"]:
+                    code_clean = ""
+
+                name_clean = str(name or "").strip()
+                name_norm = normalize_dealer_name(name_clean)
+
+                rule_dealer = None
+                if code_clean:
+                    rule_dealer = app_by_code_th.get((code_clean.upper(), th))
+                if not rule_dealer and name_norm:
+                    rule_dealer = app_by_name_th.get((name_norm, th))
+                if not rule_dealer and name_norm:
+                    rule_dealer = app_by_name_only.get(name_norm)
+
+                if not code_clean and rule_dealer and rule_dealer.get("ma_khach"):
+                    code_clean = rule_dealer["ma_khach"]
+                    ws.cell(r, 1).value = code_clean
+
+                if rule_dealer:
+                    if not ws.cell(r, 4).value and rule_dealer.get("nhom"):
+                        ws.cell(r, 4).value = rule_dealer["nhom"]
+                    ws.cell(r, 5).value = th
+
+                if target_col:
                     matched_data = None
-                    if raw_code and str(raw_code).strip() != "None":
-                        code_clean = str(raw_code).strip().upper()
-                        matched_data = muc01_by_code_th.get((code_clean, th))
-
-                    if not matched_data and name:
-                        name_clean = str(name).strip().upper()
-                        matched_data = muc01_by_name_th.get((name_clean, th))
+                    if code_clean:
+                        matched_data = muc01_by_code_th.get((code_clean.upper(), th))
+                    if not matched_data and name_clean:
+                        matched_data = muc01_by_name_th.get((name_clean.upper(), th))
 
                     if matched_data:
-                        if not raw_code or str(raw_code).strip() == "None":
-                            ws.cell(r, 1).value = matched_data.get("ma_khach", "")
                         ws.cell(r, target_col).value = matched_data["tong_m2"]
                     else:
                         ws.cell(r, target_col).value = None

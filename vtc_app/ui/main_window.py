@@ -770,7 +770,7 @@ class MainWindow(QMainWindow):
 
         # 1. Phân tích đối chiếu Mục 02 với danh mục đại lý AppData
         try:
-            sync_items = ExcelWriter.analyze_master_excel_dealers(template_path, self.current_report, self.rules)
+            sync_items = ExcelWriter.analyze_master_excel_dealers(template_path, self.current_report, self.rules, target_date=target_date)
         except Exception as e:
             print(f"Lỗi phân tích đối chiếu Excel: {e}")
             sync_items = []
@@ -785,7 +785,7 @@ class MainWindow(QMainWindow):
             if dlg.exec() != QDialog.Accepted or not dlg.is_confirmed:
                 return
             try:
-                ExcelWriter.apply_confirmed_sync_to_sheet(template_path, self.current_report, dlg.confirmed_items)
+                ExcelWriter.apply_confirmed_sync_to_sheet(template_path, self.current_report, dlg.confirmed_items, target_date=target_date)
             except PermissionError as pe:
                 QMessageBox.critical(self, "Tệp đang bị khóa", str(pe))
                 return
