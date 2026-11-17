@@ -46,7 +46,7 @@ def get_release_via_gh_cli(repo: str) -> Optional[Dict[str, Any]]:
     """Truy vấn GitHub Releases thông qua GitHub CLI (gh) đã đăng nhập trên máy mà không cần token nhúng."""
     try:
         cmd = ["gh", "release", "view", "--repo", repo, "--json", "tagName,body,publishedAt,assets"]
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8)
         if p.returncode == 0 and p.stdout:
             return json.loads(p.stdout)
     except Exception:
@@ -176,16 +176,26 @@ def download_asset(download_url: str, dest_dir: str, repo: str = DEFAULT_GITHUB_
     filename = download_url.split("/")[-1] or "update_package.zip"
     dest_path = os.path.join(dest_dir, filename)
 
-    # 1. Thử tải qua gh release download nếu gh có sẵn trên máy
-    try:
-        gh_cmd = ["gh", "release", "download", tag if tag else "v1.0.0", "--pattern", "*.zip", "--dir", dest_dir, "--repo", repo, "--clobber"]
-        p = subprocess.run(gh_cmd, capture_output=True, text=True, timeout=120)
-        if p.returncode == 0:
-            for f in os.listdir(dest_dir):
-                if f.endswith(".zip"):
-                    return os.path.join(dest_dir, f)
-    except Exception:
-        pass
+    # Tự động trích xuất tag từ download_url nếu chưa truyền vào
+    if not tag and "/download/" in download_url:
+        try:
+            parts = download_url.split("/download/")[1].split("/")
+            if len(parts) >= 1:
+                tag = parts[0]
+        except Exception:
+            pass
+
+    # 1. Thử tải qua gh release download nếu gh có sẵn trên máy và có tag
+    if tag:
+        try:
+            gh_cmd = ["gh", "release", "download", tag, "--pattern", "*.zip", "--dir", dest_dir, "--repo", repo, "--clobber"]
+            p = subprocess.run(gh_cmd, capture_output=True, text=True, timeout=120)
+            if p.returncode == 0:
+                for f in os.listdir(dest_dir):
+                    if f.endswith(".zip") and (tag in f or "VTC" in f):
+                        return os.path.join(dest_dir, f)
+        except Exception:
+            pass
 
     # 2. Tải qua HTTP với token máy cá nhân nếu có
     headers = {
