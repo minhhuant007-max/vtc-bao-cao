@@ -27,3 +27,6 @@ compare_*.py
 .idea/
 .vscode/
 .gemini/
+
+# Screenshots
+*.png
